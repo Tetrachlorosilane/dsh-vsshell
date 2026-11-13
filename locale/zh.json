@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Bash 执行器（dsh-vsshell）",
+    "description": "选择内置 bash 工具实际调用的 bash（Git Bash、Cygwin、WSL 或自定义路径），并可在 Web 设置面板中编辑。"
+  }
+}

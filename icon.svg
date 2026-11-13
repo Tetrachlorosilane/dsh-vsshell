@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Bash executor">
+  <rect x="4" y="8" width="56" height="48" rx="10" fill="#1f6f4a"/>
+  <rect x="4" y="8" width="56" height="10" rx="10" fill="#164f36"/>
+  <path d="M16 30l8 6-8 6" fill="none" stroke="#d9f5e6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 42h14" fill="none" stroke="#d9f5e6" stroke-width="4" stroke-linecap="round"/>
+</svg>

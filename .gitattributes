@@ -1,0 +1,5 @@
+# Keep the generated patch and its freshness check byte-stable across platforms:
+# scripts/compareTexts compares cordis.patch.yml verbatim, so a CRLF checkout
+# would report a false difference.
+* text=auto eol=lf
+cordis.patch.yml text eol=lf

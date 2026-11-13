@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Bash Executor (dsh-vsshell)",
+    "description": "Choose the bash implementation the built-in bash tool runs (Git Bash, Cygwin, WSL or a custom path) and edit it from a Web settings panel."
+  }
+}

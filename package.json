@@ -1,0 +1,96 @@
+{
+  "name": "@dsh-external/dsh-vsshell",
+  "version": "0.3.1",
+  "description": "Configurable bash executor for Windows DeepSeek Harness: provides ctx.shell from WSL, Git for Windows, Cygwin or a custom bash, enables the built-in tool-bash in place of tool-pwsh, and ships a Web settings panel. Tagged dsh-plugin.",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "bash",
+    "cygwin",
+    "wsl",
+    "windows"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tetrachlorosilane/dsh-vsshell.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Tetrachlorosilane/dsh-vsshell/issues"
+  },
+  "homepage": "https://github.com/Tetrachlorosilane/dsh-vsshell#readme",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./panel": {
+      "types": "./lib/panel.d.ts",
+      "default": "./lib/panel.js"
+    },
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "client.js",
+    "locale/*.json",
+    "icon.svg",
+    "presets",
+    "cordis.patch.yml",
+    "README.md",
+    "AGENTS.md",
+    "docs"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-bash-local": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-shell": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.3",
+    "@deepseek-ai/schemastery": "^3.19.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-bash-local": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-sandbox": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-shell": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-subprocess": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-subprocess-local": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-timeout": "0.2.2-rc.3",
+    "@deepseek-ai/schemastery": "3.19.0",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3",
+    "yaml": "^2.8.1"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/test.mjs",
+    "gen:patch": "node scripts/gen-preset-patch.mjs",
+    "check:patch": "node scripts/check-patch.mjs",
+    "smoke": "node scripts/smoke-executor.mjs",
+    "check": "node scripts/check.mjs"
+  }
+}
