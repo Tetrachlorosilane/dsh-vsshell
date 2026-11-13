@@ -174,6 +174,17 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
 - **引号兼容**：`unquoteScalar()` 去掉成对单/双引号（并处理 `\\`、`''` 转义），`readBoolean`/`readNumber` 接受带引号的字符串；`readPanelConfig` 对缺省/未知值回退默认；`validatePanelConfig` 在写入前统一归一化。读取路径完全交给 YAML 层（profile patch 里引号怎么写都能读），因此"引号有无"只影响用户输入框里的文本，不影响持久化格式。
 - **不手写 YAML**：面板自己不做 profile patch 文本编辑；`configEditor` 是唯一写入通道（失败会回滚并抛错），面板把错误原文返回给表单。
 
+## 7.6 插件安装生命周期（热安装与 `ctx.shell` 唯一性）
+
+- Cordis 的 **一个 context 只允许一个 `shell` 服务**；`ShellExecutor` 子类在构造时立即通过 `ctx.provide('shell', …)` 注册。因此“执行器类”不能直接作为 bundle 的默认导出：`plugin_manager install_bundle` 是**热安装**，新 bundle 层叠加时旧 `pwsh-sandbox`（`SandboxPwshExecutor`）可能仍在当前 context 中占着 `ctx.shell`，直接 `new` 就会抛 `service "shell" has been registered at <SandboxPwshExecutor>`，并且此时 bundle patch 已经禁用了 `tool-pwsh` → 部署会变成**一个 shell 工具都没有**。
+- 修复：默认导出 `VsshellBashExecutor` 只是一个**延迟挂载 wrapper**——
+  - 先做与旧实现一致的 load-time 配置校验（`custom` 必须有 `bashPath`、`probeTimeoutMs` 必须为正），保证无效配置仍在插件加载阶段被拒绝；
+  - `ctx.shell` 空闲时同步构造 `VsshellService`（真正的 `LocalBashExecutor` 子类），行为与之前完全一致；
+  - 被占用时每 200ms 探测一次 `ctx.shell`（用非 strict `ctx.get('shell', false)` 能看见“仍挂载但正在被替换”的旧实现），旧 provider 卸载后自动挂载；5 秒后输出一条可操作 warning，但**不 throw**；
+  - 轮询计时器挂在插件 fiber 的 `ctx.effect` 上，插件卸载即清理，避免 stale 回调在 bundle 卸载后再注册服务。
+- 结果：热安装不再产生 duplicate-service 错误，也不会因竞态让 `bash` 永久不可用；若旧 provider 直到重启才释放，`bash` 工具会在重启后出现（旧 provider 与 `tool-pwsh` 的禁用不会让进程崩溃）。回归测试见 `tests/executor.test.mjs` 的两条 lifecycle 用例（占用时等待、占用时配置错误仍拒绝）。
+- 与插件无关但同样属于“安装生命周期”的坑：pnpm 重算 profile 依赖树时，**不在 profile `package.json` 依赖里的手工插件会被移到 `node_modules/.ignored`**（例如 `sandbox-extra-roots` 的 `ERR_MODULE_NOT_FOUND` warning）。这类插件应以 `link:` 写进 profile 依赖；README §9.10 给出修复步骤。
+
 ## 8. `cordis.patch.yml`（生成物）结构
 
 生成器 `scripts/gen-preset-patch.mjs` 由固定模板 + 仓库内 `presets/` 快照合成，输出固定头注释（含「目标 DSH 版本」行）。结构：
@@ -235,7 +246,7 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
 |---|---|
 | `pnpm run typecheck` | `tsc -p tsconfig.json --noEmit` |
 | `pnpm run build` | `tsc -p tsconfig.json`（输出 lib/） |
-| `pnpm run test` | `node scripts/test.mjs`：单进程 import `tests/*.test.mjs`（纯函数 + wire/execute 接线 + awaitTarget 超时/取消 + patch/版本/sha256/peer 精确版本断言 + 面板引号/校验/假路由，不真的跑 bash；当前 50 个） |
+| `pnpm run test` | `node scripts/test.mjs`：单进程 import `tests/*.test.mjs`（纯函数 + wire/execute 接线 + awaitTarget 超时/取消 + 热安装 lifecycle + patch/版本/sha256/peer 精确版本断言 + 面板引号/校验/假路由，不真的跑 bash；当前 52 个） |
 | `pnpm run check:patch` | `node scripts/check-patch.mjs`：结构断言 + 目标版本断言（含 `peerPinProblems()` 的 peer 精确版本断言）+ 生成物逐字一致性（**自包含**，不需要外部 DSH 检出） |
 | `pnpm run check` | `node scripts/check.mjs`：typecheck → build → `node --check` 产物 → 单测 → patch 校验 |
 | `pnpm run smoke` | `node scripts/smoke-executor.mjs`：真机集成冒烟（**必须在非受限令牌下运行**，见下） |
@@ -258,7 +269,9 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
 10. **`loginShell: true` 会执行用户 profile**：可能带来启动脚本副作用/更慢冷启动，可配置为 false。
 11. DSH 升级可能改变 `LocalBashExecutor` 的 internals（`protected executeArgv` / `resolve`）；`pnpm run typecheck` 会首当其冲报错，升级时先跑检查。
 12. **配置面板是运行配置的写入口**：保存会经 `configEditor` 触发 Loader 热协调（执行器行重载），因此面板 Host 半必须是**独立行**（`dsh-vsshell-panel`），执行器解析失败或重载时面板仍可用；若 DSH 未来改动 `configEditor`/`webServer` 服务签名，面板会先失效（执行器不受影响）。同源路由 + 页面 token 只防浏览器跨站，不防本机同用户进程；不要把它暴露到非环回监听地址（README §8.1）。
-13. **网页端面板未在本机做浏览器内验证**：本次交付验证到「route 单元测试 + client.js 语法 + 生成物/元数据静态检查」；实际渲染与点击保存需安装/重启后在 Web 设置页确认（见 §11）。
+13. **从 GitHub 安装/热安装时旧 provider 仍占用 `ctx.shell`**：`install_bundle` 不重启进程，bundle patch 禁用 `pwsh-sandbox` 与新 executor 挂载之间没有“旧 provider 已卸载”的顺序保证；旧实现会在同一 context 二次注册 `shell` 并抛错，导致 patch 已禁用 pwsh 而新执行器没挂上 → 无 shell 工具。0.3.2 起由 wrapper 等待旧 provider 卸载后自动挂载（见 §7.6），失败时只 warn 不 throw；极端情况下仍需重启。
+14. **从 URL/GitHub 安装会重算 profile 依赖树**：不在 profile `package.json` 里的手工插件会被 pnpm 移入 `node_modules/.ignored`（`ERR_MODULE_NOT_FOUND` warning）。这是 profile 安装方式的约束，不是本插件代码可修复的；README §9.10 建议把这类插件写成 `link:` 依赖。
+15. **网页端面板未在本机做浏览器内验证**：交付验证到「route 单元测试 + client.js 语法 + 生成物/元数据静态检查」；实际渲染与点击保存需安装/重启后在 Web 设置页确认（见 §11）。
 
 ## 11. 阶段计划与状态
 
@@ -275,3 +288,4 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
 10. **升级 DSH 0.2.1-rc.5**：[完成代码/静态验证，待重启] 与 rc.3 升级同因：peer 精确固定 rc.3 被 rc.5 运行时兼容检查拒绝（工具回退 `pwsh`）。rc.5 安装的 shipped preset 仍与 rc.2/rc.3 逐字节相同（三份 sha256 不变）→ `source.json` 只改 `dshVersion`/`origin`/`extractedAt`；`package.json` 的 dev/peer 精确改 rc.5（cordis 仍 4.0.5、schemastery 3.18.5），插件版本升至 0.2.1；`pnpm install` 后 typecheck 直接通过；`gen:patch` 只改版本行；`check` 50/50 PASS；rc.5 依赖下 smoke custom/Cygwin 10/10 PASS。核对 rc.5 接口：`permission-presets` 仍要求 `sandboxMode` 非空、`tool-bash` sandboxPolicy seam 未变、`configEditor.edit`/`webServer.register` 未变 → `src/`、`client.js` 无需改动。
 11. **升级 DSH 0.2.2-rc.1（minor）**：[完成代码/静态验证，待重启] 这次不是只改版本号：**shipped preset 形状变了**（`tool-subagent-list-agents` 并入 `tool-subagent-control`、`modelSelectionSettings` → `modelSelection`/`modelDiscovery`、ptc 改用 `tool-executor-ptc` 且去掉 `tool-presentation`、新增 `tool-plugin-market` 与 `tool-fs.applyPatch`、standard 的 `tool-plugin-manager` 也改走 `!!js`），且 **cordis 4.0.5 → 4.1.0**、schemastery 3.18.5 → 3.19.0。处理：从 0.2.2-rc.1 安装的 `app.asar` 提取三份 preset 整份替换快照（sha256 全变），`source.json` 更新版本/来源/哈希；`package.json` 的 DSH dev/peer 精确改 `0.2.2-rc.1`、cordis `4.1.0`、schemastery dev `3.19.0`/peer `^3.19.0`，插件版本 `0.3.0`；`pnpm install` 后 typecheck 直接通过；重写 `tests/patch.test.mjs` 的版本指纹；`gen:patch` 生成新生成物；`check` 50/50 PASS；依赖下 smoke custom/Cygwin 10/10 PASS。**客户端契约也变了**：`settings.section` 注册只接受 `id`/`order`/`label`，`client.js` 改为闭包传 `t`/`ctx` + `ctx.locale.subscribe()` 重渲染；`permission-presets`/`tool-bash`/`configEditor`/`webServer` 的服务 seam 未变。
 12. **升级 DSH 0.2.2-rc.3（patch 版本也会改 preset）**：[完成代码/静态验证] rc.3 相对 rc.1 改动：standard/ptc 新增 `tool-office` 行、standard 的 `skill-filesystem` 增加 `customSkillDirs`、delegation 的 `tool-subagent-control` 增加 `interrupt: false`、cordis persona 文本更新。处理：整份替换三份快照（sha256 全变）、更新 `source.json`、DSH dev/peer 精确改 `0.2.2-rc.3`、插件版本 `0.3.1`；typecheck 通过；`gen:patch` 由 420 行变为 433 行；`check` 50/50 PASS；rc.3 依赖下 smoke custom/Cygwin 10/10 PASS。**结论**：patch 版本也可能改 preset 形状，升级必须逐次提取安装快照并跑 diff。
+13. **修复热安装生命周期（duplicate `ctx.shell`）**：[完成] 用户从 GitHub URL 安装时，热安装让旧 `pwsh-sandbox` 仍占着 `ctx.shell`，而 bundle patch 已禁用 `tool-pwsh`，旧实现直接注册第二个 `shell` 服务导致激活失败、无任何 shell 工具。修复：默认导出改为延迟挂载 wrapper，等待旧 provider 释放后自动挂载（200ms 轮询、5s 后 warn、不 throw），保留 load-time 配置校验；`tests/executor.test.mjs` 增加两条 lifecycle 回归；插件版本 `0.3.2`，README §3.2/§9.10 与 AGENTS §4.14/§7 同步。`check` 52/52 PASS。

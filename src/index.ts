@@ -86,10 +86,18 @@ type TargetState =
   | { status: 'failed'; error: Error }
 
 /**
- * The bash executor. One instance per composition: it resolves the configured
- * source once, then executes every command through that resolved bash.
+ * The actual shell service: one instance per composition. It resolves the
+ * configured source once, then executes every command through that resolved
+ * bash.
+ *
+ * The plugin entry below (`VsshellBashExecutor`) constructs this class only
+ * when `ctx.shell` is free. Keeping the provider separate from the plugin
+ * wrapper is what makes a live `install_bundle` over an already-running
+ * `pwsh-sandbox` possible: registering a second `shell` service in the same
+ * context throws in cordis, so the wrapper waits for the old provider's fiber
+ * to release the slot first (see AGENTS.md section 4.14).
  */
-export default class VsshellBashExecutor extends LocalBashExecutor {
+class VsshellService extends LocalBashExecutor {
   /** Services this executor needs: the process substrate, prompt-section registry, and the deployment sandbox policy. */
   static override inject = ['subprocess', 'systemPrompt', 'sandboxPolicy']
 
@@ -146,12 +154,7 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
     // this package independent of the policy package's type surface.
     const sandboxPolicy = (ctx as unknown as { sandboxPolicy?: { defaultMode?: SandboxMode } }).sandboxPolicy
     this.defaultSandboxMode = sandboxPolicy?.defaultMode ?? 'workspace-write'
-    if (config.source === 'custom' && config.bashPath.trim() === '') {
-      throw new Error('vsshell: source "custom" requires a non-empty bashPath')
-    }
-    if (!Number.isFinite(config.probeTimeoutMs) || config.probeTimeoutMs <= 0) {
-      throw new Error('vsshell: probeTimeoutMs must be a positive finite number')
-    }
+    assertValidConfig(config)
     // `wslDistro` applies to any launch that ends up using a WSL launcher,
     // including the `auto` fallback; a native-only source simply never uses it.
     // Resolve eagerly so the prompt section can name the real shell soon after
@@ -372,6 +375,105 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
       'Sandbox: bash is NOT confined (file tools still are); `sandbox_permissions`/`justification` are inert for this tool (escalation changes nothing).',
     )
     return lines.join('\n')
+  }
+}
+
+/**
+ * Plugin entry for the bundle's `dsh-vsshell` row.
+ *
+ * Cordis allows one `shell` service per context, and the provider registers
+ * during construction. A live `install_bundle` replaces the bundle layer while
+ * the previous `pwsh-sandbox` service is still mounted; constructing the
+ * provider directly in that window throws `service "shell" has been registered
+ * at <SandboxPwshExecutor>` and leaves the deployment without ANY shell tool
+ * (the bundle patch already disabled pwsh/tool-pwsh).
+ *
+ * This wrapper therefore waits for the old provider's fiber to release
+ * `ctx.shell`, then mounts the executor. The wait is bounded by the plugin's
+ * own lifetime and reports one actionable warning after a few seconds; it does
+ * not throw, so a hot install degrades to "bash appears once the old provider
+ * unloads (or after a restart)" instead of a broken composition.
+ */
+export default class VsshellBashExecutor {
+  /** Same dependencies as the provider; declared here so the fiber waits for them. */
+  static inject = ['subprocess', 'systemPrompt', 'sandboxPolicy']
+
+  /** The provider's schema, exposed for DSH's Config projection. */
+  static Config = VsshellService.Config
+
+  constructor(ctx: Context, config: Config) {
+    // Keep load-time config errors identical to the old direct-service plugin:
+    // an invalid config must reject activation even if mounting is deferred.
+    assertValidConfig(config)
+    mountShellWhenFree(ctx, config)
+  }
+}
+
+/** How often the wrapper re-checks the `shell` slot while an old provider unloads. */
+const SHELL_MOUNT_POLL_MS = 200
+/** After this long, emit one actionable warning but keep waiting. */
+const SHELL_MOUNT_WARN_MS = 5_000
+
+/** Mount the provider if `ctx.shell` is free; report whether it mounted. */
+function tryMountShell(ctx: Context, config: Config): boolean {
+  if (readService(ctx, 'shell') !== undefined) return false
+  new VsshellService(ctx, config)
+  return true
+}
+
+/** Wait for a still-mounted `shell` provider to unload, then mount ours. */
+function mountShellWhenFree(ctx: Context, config: Config): void {
+  if (tryMountShell(ctx, config)) return
+  const startedAt = Date.now()
+  let warned = false
+  const timer = setInterval(() => {
+    try {
+      if (tryMountShell(ctx, config)) {
+        clearInterval(timer)
+        const logger = readService(ctx, 'logger') as { info?: (message: string) => void } | undefined
+        logger?.info?.(`dsh-vsshell: previous shell provider released ctx.shell after ${Date.now() - startedAt}ms; bash executor mounted`)
+        return
+      }
+    } catch (error) {
+      clearInterval(timer)
+      const message = error instanceof Error ? error.message : String(error)
+      const logger = readService(ctx, 'logger') as { error?: (message: string) => void } | undefined
+      logger?.error?.(`dsh-vsshell: deferred shell mount failed: ${message}`)
+      return
+    }
+    if (!warned && Date.now() - startedAt >= SHELL_MOUNT_WARN_MS) {
+      warned = true
+      const logger = readService(ctx, 'logger') as { warn?: (message: string) => void } | undefined
+      logger?.warn?.(
+        'dsh-vsshell: ctx.shell is still held by another executor (usually the previous pwsh-sandbox during a live install). '
+        + 'The bash executor will mount automatically once that provider unloads; if the bash tool stays unavailable, '
+        + 'fully quit and relaunch DSH.',
+      )
+    }
+  }, SHELL_MOUNT_POLL_MS)
+  // Owned by the plugin fiber: cleared on unload/reload so a stale timer can
+  // never mount after the bundle has gone away.
+  ctx.effect(() => () => clearInterval(timer), 'dsh-vsshell: wait for ctx.shell before mounting')
+}
+
+/**
+ * Read a service without requiring it in `static inject`. Used for diagnostics
+ * (`logger`) and for the shell-slot probe, which must see a still-mounted
+ * provider even while it is being replaced.
+ */
+function readService(ctx: Context, name: string): unknown {
+  const get = (ctx as unknown as { get?: (service: string, strict?: boolean) => unknown }).get
+  if (typeof get !== 'function') return undefined
+  return get.call(ctx, name, false)
+}
+
+/** Load-time configuration validation shared by the wrapper and the provider. */
+function assertValidConfig(config: Config): void {
+  if (config.source === 'custom' && config.bashPath.trim() === '') {
+    throw new Error('vsshell: source "custom" requires a non-empty bashPath')
+  }
+  if (!Number.isFinite(config.probeTimeoutMs) || config.probeTimeoutMs <= 0) {
+    throw new Error('vsshell: probeTimeoutMs must be a positive finite number')
   }
 }
 

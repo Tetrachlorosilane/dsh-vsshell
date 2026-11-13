@@ -29,11 +29,8 @@
  */
 import { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local';
 import type { Config as LocalBashConfig } from '@deepseek-ai/dsh-bash-local';
-import type { SandboxMode } from '@deepseek-ai/dsh-sandbox';
-import type { ShellExecRequest, ShellExecSpec, ShellExecution } from '@deepseek-ai/dsh-shell';
-import type { ResolveDeps, Source } from './detect.js';
+import type { Source } from './detect.js';
 /**
  * Validated plugin configuration: the local bash budgets (mirrored from
  * `LocalBashExecutor.Config`, see AGENTS.md section 4.3) plus the shell-source
@@ -63,13 +60,25 @@ export interface Config extends LocalBashConfig {
     probeTimeoutMs: number;
 }
 /**
- * The bash executor. One instance per composition: it resolves the configured
- * source once, then executes every command through that resolved bash.
+ * Plugin entry for the bundle's `dsh-vsshell` row.
+ *
+ * Cordis allows one `shell` service per context, and the provider registers
+ * during construction. A live `install_bundle` replaces the bundle layer while
+ * the previous `pwsh-sandbox` service is still mounted; constructing the
+ * provider directly in that window throws `service "shell" has been registered
+ * at <SandboxPwshExecutor>` and leaves the deployment without ANY shell tool
+ * (the bundle patch already disabled pwsh/tool-pwsh).
+ *
+ * This wrapper therefore waits for the old provider's fiber to release
+ * `ctx.shell`, then mounts the executor. The wait is bounded by the plugin's
+ * own lifetime and reports one actionable warning after a few seconds; it does
+ * not throw, so a hot install degrades to "bash appears once the old provider
+ * unloads (or after a restart)" instead of a broken composition.
  */
-export default class VsshellBashExecutor extends LocalBashExecutor {
-    readonly config: Config;
-    /** Services this executor needs: the process substrate, prompt-section registry, and the deployment sandbox policy. */
+export default class VsshellBashExecutor {
+    /** Same dependencies as the provider; declared here so the fiber waits for them. */
     static inject: string[];
+    /** The provider's schema, exposed for DSH's Config projection. */
     static Config: z<Schemastery.ObjectS<NoInfer<{
         cwd: z<string, string, "volatile">;
         timeoutMs: z<number, number, "volatile-defined">;
@@ -97,84 +106,5 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
         verify: z<boolean, boolean, "defined">;
         probeTimeoutMs: z<number, number, "defined">;
     }>>, "plain">;
-    /** Resolved target state; `pending` until the background resolution settles. */
-    private state;
-    /**
-     * Test hook: replacement resolution side effects. Tests set this before
-     * forcing a retry (by replacing `state`) to exercise the bounded-wait path
-     * without spawning a real bash; production always uses the default deps.
-     */
-    readonly internals: {
-        deps?: ResolveDeps;
-    };
-    /** The in-flight (or last settled) background resolution. */
-    private resolution;
-    /**
-     * The deployment's default sandbox mode, captured from `ctx.sandboxPolicy`.
-     * Advertised for DSH composition coherence (permission presets + tool
-     * escalation schema); it does not mean this executor confines anything.
-     */
-    private readonly defaultSandboxMode;
-    /**
-     * The capability fact `tool-bash`/`permission-presets` read. DSH couples
-     * "shell executor confines" to this getter, so it reports the deployment's
-     * default FILE policy; execution itself remains unconfined (module note).
-     */
-    get sandboxMode(): SandboxMode;
     constructor(ctx: Context, config: Config);
-    /**
-     * Resolve a request into a fully-specified spec. The parent owns budgets,
-     * caps, and validation; this adds the workdir translation that lets a model
-     * address the workspace with the POSIX paths its shell prints.
-     */
-    resolve(request: ShellExecRequest): ShellExecSpec;
-    /**
-     * Execute one resolved spec through the resolved bash. WSL launches get
-     * `WSLENV` forwarding (the Linux process inherits no Windows environment)
-     * and `WSL_UTF8` so launcher diagnostics stay UTF-8. Native bash launches
-     * export `CHERE_INVOKING=1`: Cygwin's `/etc/profile` otherwise `cd`s a login
-     * shell to `$HOME`, which would silently defeat `workdir`; Git Bash ignores
-     * the variable.
-     */
-    execute(spec: ShellExecSpec): Promise<ShellExecution>;
-    /**
-     * Live resolution facts for the configuration panel; never throws. The panel
-     * is a separate host row, so it stays usable even when this executor failed
-     * to resolve.
-     */
-    describeResolved(): {
-        status: 'ready' | 'pending' | 'failed';
-        exe?: string;
-        family?: string;
-        label?: string;
-        source?: Source;
-        detail?: string;
-    };
-    /**
-     * Reject a missing workdir with an actionable message before spawning. The
-     * spawn layer would only report `ENOENT`, which cannot distinguish a bad
-     * working directory from a missing bash executable.
-     */
-    private assertWorkdir;
-    /**
-     * Wait for the target under the execution's own contract: the caller's
-     * cancellation aborts the wait, and a foreground deadline bounds it, so a slow
-     * probe can neither outlive the timeout nor ignore a cancel.
-     */
-    private awaitTarget;
-    /** Start one background resolution and publish its outcome. */
-    private startResolution;
-    /** The resolved target, waiting for the in-flight resolution or retrying one failed attempt. */
-    private currentTarget;
-    /** The validated config subset the resolver consumes. */
-    private resolveOptions;
-    /** Register the global section that tells the model which shell it is driving. */
-    private registerPromptSection;
-    /**
-     * The section text, resolved at each prompt assembly from the current target
-     * state. Kept deliberately small (asserted by a length test): only facts the
-     * model needs on EVERY call live here. Failure specifics stay in the error
-     * messages, which cost nothing until a call actually fails.
-     */
-    private promptText;
 }

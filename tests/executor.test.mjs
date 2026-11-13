@@ -229,3 +229,50 @@ test('awaitTarget honours caller cancellation', async () => {
   setTimeout(() => controller.abort(new Error('cancelled-by-test')), 30)
   await assert.rejects(execution, /cancelled-by-test/u)
 })
+
+/** Poll until `predicate()` is true, failing the test on timeout. */
+async function waitFor(predicate, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  assert.fail('condition was not met before the timeout')
+}
+
+test('waits for a stale shell provider instead of throwing duplicate-service', async () => {
+  const { ctx, section } = captureHost()
+  // Simulate a live install over a running deployment: pwsh-sandbox still owns
+  // ctx.shell at the moment the new bundle's executor activates.
+  const stale = {
+    kind: 'stale-pwsh-provider',
+    resolve() { return {} },
+    execute() { throw new Error('stale provider must not be used') },
+    sandboxMode: 'workspace-write',
+  }
+  const release = ctx.provide('shell', stale)
+  // Before the fix this rejected with `service "shell" has been registered`.
+  await ctx.plugin(VsshellBashExecutor, { source: 'git-bash', verify: false })
+  assert.equal(ctx.shell, stale, 'the stale provider must keep the slot while it is mounted')
+  assert.equal(section(), undefined, 'the new prompt section must not appear before the executor mounts')
+
+  await release()
+  await waitFor(() => {
+    const shell = ctx.get('shell')
+    return shell !== undefined && shell !== stale
+  })
+  assert.notEqual(ctx.shell, stale)
+  assert.equal(typeof ctx.shell.resolve, 'function')
+  assert.equal(ctx.shell.sandboxMode, 'workspace-write')
+  assert.equal(section().name, 'shell:vsshell')
+})
+
+test('invalid config still rejects plugin load while a stale shell provider is mounted', async () => {
+  const { ctx } = captureHost()
+  const release = ctx.provide('shell', { kind: 'stale', resolve() { return {} } })
+  await assert.rejects(
+    async () => { await ctx.plugin(VsshellBashExecutor, { source: 'custom', bashPath: '', verify: false }) },
+    /requires a non-empty bashPath/u,
+  )
+  await release()
+})

@@ -37,6 +37,7 @@ preset 层（standard / ptc / cordis；agent scope）
 插件初始化的几个固定事实（改之前先读 `src/index.ts`）：
 
 - `static inject = ['subprocess', 'systemPrompt', 'sandboxPolicy']`；
+- **默认导出是延迟挂载 wrapper**（`VsshellBashExecutor`）：`ctx.shell` 空闲时立即构造 `VsshellService`，被旧 provider 占用时等待其卸载后挂载（见 4.14、design.md §7.6）；
 - 构造时启动一次后台解析（不阻塞 host 启动），供 prompt section 尽早说出真实 shell；
 - `sandboxMode` getter 镜像 `ctx.sandboxPolicy.defaultMode`（构造时捕获）：这是 DSH `permission-presets` 的组合前提（它拒绝 `sandboxMode === undefined` 的 shell 执行器，并把该值当会话默认 sandbox 模式），**不代表本执行器 confine**；
 - native bash（Git Bash/Cygwin/自定义）启动时导出 `CHERE_INVOKING=1`：Cygwin 的 `/etc/profile` 否则会把 login shell `cd` 到 `$HOME`，破坏 `workdir`；WSL 启动不带它；
@@ -53,7 +54,7 @@ preset 层（standard / ptc / cordis；agent scope）
 
 | 路径 | 职责 | 能否手改 |
 |---|---|---|
-| `src/index.ts` | 插件入口：`Config` schema、`VsshellBashExecutor`（`resolve` / `execute` / `awaitTarget` / `describeResolved`）、prompt section | 可改（遵守 §4） |
+| `src/index.ts` | 插件入口：`Config` schema、`VsshellBashExecutor`（延迟挂载 wrapper）、`VsshellService`（`resolve` / `execute` / `awaitTarget` / `describeResolved`）、prompt section | 可改（遵守 §4） |
 | `src/panel.ts` | 配置面板 Host 半：`/dsh-vsshell-panel` 同源 JSON 路由、引号归一化与校验、经 `configEditor` 写回 profile | 可改（遵守 §4） |
 | `client.js` | 配置面板 browser half（Module Loader 懒工厂、无构建）：注册 `settings.section`，fetch 上面的路由 | 可改（遵守 §4） |
 | `locale/en.json`、`locale/zh.json`、`icon.svg` | 插件在 Plugin Manager / 设置里的标题、描述与图标 | 可改 |
@@ -136,6 +137,7 @@ preset 层（standard / ptc / cordis；agent scope）
 | 4.11 | `execute()` 必须先校验 `workdir` 存在（`assertWorkdir`），错误要写明来源/家族/exe 与可接受的 POSIX 前缀；不要让 `spawn ... ENOENT` 裸奔 | 模型分不清 `ENOENT` 是 bash 缺失还是工作目录写错，就无法自行纠正；失败原因必须可读 |
 | 4.12 | **prompt section 最小化**：只放每次调用都需要的差异事实（Shell/invocation、路径提示、`DSH_*`、沙箱事实），**不要重复** tool-bash 原生 description 的内容（fresh shell、用 `workdir` 代替 `cd`）；失败细节只进错误消息；长度上限由 executor 单测断言（ready 状态 ≤ 600 字符） | 该 section 会进入每一轮 system prompt，冗余即持续的上下文负担；失败信息只在真失败时消耗 token 才符合最小原则 |
 | 4.13 | **配置面板只经 `configEditor` 写 profile 用户层**，不要手写 YAML；路由仅同源（`Origin` 校验 + 页面 token，POST 需要 `x-dsh-vsshell-token`）；输入先做引号归一化（单/双/裸值等价，数字/布尔允许带引号字符串）；只改 6 个自定义字段，不动预算键；browser half 保持无构建的 Module Loader 工厂。0.2.2-rc.3 的 `settings.section` 注册契约只含 `id`/`order`/`label`：组件通过 factory 闭包拿 `t`/`ctx`，并用 `ctx.locale.subscribe()` 触发本地化重渲染，不要再传 `locale`/`inject` 注册选项 | 面板是用户直接改运行配置的入口：手写 YAML 会破坏注释/顺序；不校验来源就是任意本地页面可改 shell 路径；引号差异是用户从 patch 复制值时最常见的输入形态；slot 契约变化会让旧注册选项失效 |
+| 4.14 | **默认导出必须是延迟挂载 wrapper**：`VsshellBashExecutor` 只做 config 校验 + 在 `ctx.shell` 空闲时构造 `VsshellService`；被占用时用 200ms 轮询等待旧 provider 卸载（5s 后 warn 一次），**禁止把 `Service` 子类直接作为默认导出**，也禁止在等待路径里 throw | `plugin_manager install_bundle` 是热安装：新 bundle 叠加时旧 `pwsh-sandbox` 的 `SandboxPwshExecutor` 可能仍占着 `ctx.shell`；Cordis 同一 context 只允许一个 `shell` 服务，直接注册会抛 `service "shell" has been registered`，导致整个 executor 激活失败、连 `pwsh` 也已被 patch 禁用 → 没有任何 shell 工具。回归测试见 `tests/executor.test.mjs` 的 lifecycle 两条用例 |
 
 ### 4.3 配置字段同步清单
 
@@ -258,6 +260,10 @@ preset 层（standard / ptc / cordis；agent scope）
   - `tests/executor.test.mjs` 还覆盖 `awaitTarget` 的**超时/取消**分支：通过 `ctx.shell.internals.deps`
     注入永不 settle 的假 probe、把 `state` 置为 failed 触发重试，验证前台 `timeoutMs` 与调用方 abort
     都会终止等待——改 §4.10 的等待语义必须保留这两条用例。
+  - `tests/executor.test.mjs` 的 **lifecycle 用例**：预先 `ctx.provide('shell', stale)` 模拟热安装时旧
+    `pwsh-sandbox` 仍占用服务槽，断言插件加载不抛 duplicate-service、旧 provider 释放后自动挂载
+    `VsshellService`（prompt section 也在挂载后才出现），以及“被占用时无效配置仍然在 load 阶段被拒绝”。
+    改 §4.14 的延迟挂载必须保留这两条用例。
 - **改 `src/detect.ts` 就必须同步补/改 `tests/detect.test.mjs`**（新增来源、新增翻译规则、新增转发变量都算）；
   改 `src/index.ts` 的注册/`resolve()`/`execute()`/prompt 文本就同步补/改 `tests/executor.test.mjs`；
   改生成规则、快照或目标版本就同步补/改 `tests/patch.test.mjs`（含版本指纹）。

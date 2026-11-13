@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-vsshell",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Configurable bash executor for Windows DeepSeek Harness: provides ctx.shell from WSL, Git for Windows, Cygwin or a custom bash, enables the built-in tool-bash in place of tool-pwsh, and ships a Web settings panel. Tagged dsh-plugin.",
   "keywords": [
     "dsh-plugin",

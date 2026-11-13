@@ -57,7 +57,7 @@ pnpm run build
 pnpm run check
 ```
 
-`pnpm run check` 的完整门禁顺序是：typecheck → build → 产物语法检查（含 `client.js`）→ 单测（50 个用例）→ `cordis.patch.yml` 结构 / 目标版本 / 生成物一致性校验；全绿后再安装。
+`pnpm run check` 的完整门禁顺序是：typecheck → build → 产物语法检查（含 `client.js`）→ 单测（52 个用例）→ `cordis.patch.yml` 结构 / 目标版本 / 生成物一致性校验；全绿后再安装。
 
 **自包含**：`cordis.patch.yml` 从仓库内的 `presets/` 快照生成，`pnpm run check` 不需要 DSH 源码检出。
 
@@ -75,6 +75,10 @@ target: <本仓库的绝对路径>
 ```
 
 该操作需要 danger-full-access 权限（会请求审批）。安装完成后**重启 DSH**（或重载 profile），让 host 行与 preset 覆盖生效。
+
+也可以直接从 GitHub 仓库安装（`target: https://github.com/Tetrachlorosilane/dsh-vsshell` 或 `github:Tetrachlorosilane/dsh-vsshell`）。**热安装时** DSH 会把新 bundle 叠到正在运行的组合上：旧的 `pwsh-sandbox` 可能还占着 `ctx.shell`，本插件的执行器会**等待旧 provider 卸载后自动挂载**，不会抛重复服务错误；如果旧 provider 直到重启才卸载，则 `bash` 工具会在重启后出现。详见 9.10。
+
+> 从 URL 安装会触发 pnpm 重算 profile 依赖树，**不在 profile `package.json` 依赖里的手工插件会被移动到 `node_modules/.ignored`**（典型现象：`sandbox-extra-roots` 报 `ERR_MODULE_NOT_FOUND` warning）。装之前先把这类本地插件写成 `link:` 依赖，见 9.10。
 
 > 如果这个 profile 之前用 Web 编辑器保存过 preset，它的 `cordis.patch.yml` 里可能已有 `preset-*` 覆盖行，会整份盖掉本 bundle 的修正（装完仍是 pwsh、`list_agents` / PTC 呈现消失）。装之前或装之后发现异常，先看 9.9。
 
@@ -516,13 +520,44 @@ Test-Path 'C:\Program Files\Git\bin\bash.exe'
 
 **复核办法**：看**合成后**的 preset 内容——`tool-pwsh` 应为 `disabled: true`、`tool-bash` 不应带 `disabled`；0.2.2-rc.3 的 delegation 里应有 `tool-subagent-control`，`tool-subagent` 带 `modelSelection: true`/`modelDiscovery: true`，ptc 应有 `tool-executor-ptc`；生成物头部版本行应为 `0.2.2-rc.3`。
 
+### 9.10 从 GitHub 安装/热安装后的 shell 冲突与本地插件丢失
+
+**症状 A：** 安装时或启动日志出现
+`Error: service "shell" has been registered at <SandboxPwshExecutor>`，随后 `bash`/`pwsh` 都没有。
+
+- 原因：`plugin_manager install_bundle` 是**热安装**。本 bundle 的 patch 会禁用 `pwsh-sandbox`，但旧进程里它的执行器可能还没卸载；Cordis 同一 context 只允许一个 `shell` 服务，直接注册就会抛这个错。
+- 0.3.2 起插件入口改成**延迟挂载**：检测到 `ctx.shell` 仍被占用时先等待（每 200ms 检查，5s 后输出一条可操作 warning），旧 provider 卸载后自动挂载执行器，**不会再因为这个竞态使整个插件激活失败**。
+- 处理：等几秒看 `bash` 工具是否出现；若旧 provider 一直不卸载，**完全退出 DSH 再启动**（重启时组合顺序干净，`pwsh-sandbox` 先被 patch 禁用，不会冲突）。
+- 若重启后仍报同一错误：说明还有别的层在提供 `ctx.shell`。在 profile 用户层（最后生效）显式加：
+  ```yaml
+  - id: pwsh-sandbox
+    name: "@deepseek-ai/dsh-pwsh-sandbox"
+    disabled: true
+  - id: tool-pwsh
+    name: "@deepseek-ai/dsh-tool-pwsh"
+    disabled: true
+  ```
+  并确认 profile `package.json` / `bundles` 里 `@dsh-external/dsh-vsshell` 只有一份。
+
+**症状 B：** warning `Cannot find package '@dsh-external/sandbox-extra-roots' imported from ...\profiles\desktop\`，或其它本地插件在安装后消失。
+
+- 原因：pnpm 重算依赖树时，**不是 profile `package.json` 依赖**的手工插件会被移到 `node_modules/.ignored`。这是 pnpm 的行为，与本文插件无关。
+- 修复：把该插件写成 profile 依赖再安装一次，例如：
+  ```jsonc
+  // C:\Users\HP\.dsh\profiles\desktop\package.json
+  "dependencies": {
+    "@dsh-external/sandbox-extra-roots": "link:../../plugins/sandbox-extra-roots"
+  }
+  ```
+  然后在 profile 目录 `pnpm install`、重启。不再需要它的话，删掉 profile `cordis.patch.yml` 里对应的 `insert` 行即可。
+
 ## 10. 开发
 
 ### 10.1 仓库结构
 
 | 路径 | 内容 |
 |---|---|
-| `src/index.ts` | 插件入口：Config schema、`VsshellBashExecutor`、系统提示词 section、`describeResolved()`（供面板显示） |
+| `src/index.ts` | 插件入口：Config schema、`VsshellBashExecutor`（延迟挂载 wrapper）、`VsshellService`（真正的执行器）、系统提示词 section、`describeResolved()`（供面板显示） |
 | `src/detect.ts` | 纯函数：候选路径、探测、workdir 翻译、argv 与 `WSLENV` 构造 |
 | `src/panel.ts` | 配置面板 Host 半：`/dsh-vsshell-panel` 同源 JSON 路由、引号归一化、经 `configEditor` 写回 profile |
 | `client.js` | 配置面板 browser half（Module Loader 懒工厂）：注册 `settings.section` 页面、调用上面的 JSON 路由 |
@@ -536,7 +571,7 @@ Test-Path 'C:\Program Files\Git\bin\bash.exe'
 | `scripts/test.mjs` | 单进程内 import 全部 `tests/*.test.mjs`（沙箱内不能逐文件 spawn） |
 | `scripts/smoke-executor.mjs` | 真机冒烟：唯一真正启动 bash 的脚本 |
 | `tests/detect.test.mjs` | `detect.ts` 纯函数单测（注入假 `exists` / `probe`） |
-| `tests/executor.test.mjs` | 执行器接线单测（假 `subprocess` / `systemPrompt`，`verify: false` 保证零 spawn；含 `execute()` 的 native / WSL 路径） |
+| `tests/executor.test.mjs` | 执行器接线单测（假 `subprocess` / `systemPrompt`，`verify: false` 保证零 spawn；含 `execute()` 的 native / WSL 路径，以及热安装时等待旧 `ctx.shell` provider 卸载的 lifecycle 用例） |
 | `tests/patch.test.mjs` | patch 结构 / 目标版本 / 目标版本指纹（0.2.2-rc.3 安装形状；rc.2–rc.5 之间才逐字节相同）/ 生成物一致性断言（不写文件、不起 shell） |
 | `tests/panel.test.mjs` | 配置面板单测：引号/裸值归一化、校验错误、同源路由的 GET/POST/token/跨站拒绝（假 `webServer` + 假 `configEditor`，零真实网络） |
 | `.gitattributes` | 固定 LF（`* text=auto eol=lf`），保证生成物逐字比较不被 CRLF 干扰 |
@@ -551,7 +586,7 @@ Test-Path 'C:\Program Files\Git\bin\bash.exe'
 |---|---|
 | `pnpm run build` | `tsc` 编译到 `lib/`（ESM + 类型声明）；测试与安装都读 `lib/` |
 | `pnpm run typecheck` | `tsc --noEmit`，DSH 升级后先跑这个 |
-| `pnpm run test` | 单进程内跑 50 个用例（`detect` / `executor` / `patch` / `panel` 四份，**不启动任何真实进程**；先 build） |
+| `pnpm run test` | 单进程内跑 52 个用例（`detect` / `executor` / `patch` / `panel` 四份，**不启动任何真实进程**；先 build） |
 | `pnpm run check:patch` | 三段校验：结构（host 行、win32-only insert、三个 preset 覆盖、无 `preset-minimal` 行）+ 目标版本（生成物头部 = `presets/source.json` = devDependency）+ 与生成器输出逐字一致 |
 | `pnpm run check` | 提交前的完整门禁：typecheck → build → 产物语法检查 → 单测 → patch 三段校验；自包含，不需要 DSH 源码检出 |
 | `pnpm run smoke` | 真机冒烟：起最小 cordis app，跑 `echo` / `pwd` / 退出码 / 双流 / `DSH_*` / 超时 / 后台；必须在**非受限令牌**（danger-full-access）下运行 |
