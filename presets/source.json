@@ -1,7 +1,7 @@
 {
-  "dshVersion": "0.2.2-rc.3",
-  "origin": "DeepSeek Harness 0.2.2-rc.3 desktop installation: resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml",
-  "extractedAt": "2026-11-13",
+  "dshVersion": "0.2.2-rc.5",
+  "origin": "DeepSeek Harness 0.2.2-rc.5 desktop installation: resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml",
+  "extractedAt": "2026-11-18",
   "files": {
     "standard": "standard.patch.yml",
     "ptc": "ptc.patch.yml",
@@ -12,5 +12,5 @@
     "ptc": "838665e063dc8bcab4caf24e41ec848373c434df4262feb981306944e1cec7fd",
     "cordis": "6be896c3d4885f395bf1856753f454cf725709ffdddcc57f1e6b8d8c07181f34"
   },
-  "notes": "Verbatim shipped preset patches of the target DSH version (byte-identical to the asar originals; sha256 above is enforced by the generator/tests). 0.2.2-rc.3 is a patch upgrade over rc.1 that still changes preset contents: standard/ptc gain the tool-office row, standard gains skill-filesystem customSkillDirs, delegation tool-subagent-control sets interrupt:false, and the cordis persona sentence changes. Never generate from a development source checkout."
+  "notes": "Verbatim shipped preset patches of the target DSH version (byte-identical to the asar originals; sha256 above is enforced by the generator/tests). 0.2.2-rc.5 ships presets byte-identical to 0.2.2-rc.3 (same three sha256 values), so this upgrade changed only the version/origin; package peer pins and generated patch header move to 0.2.2-rc.5. Never generate from a development source checkout."
 }

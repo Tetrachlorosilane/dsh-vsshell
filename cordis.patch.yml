@@ -9,7 +9,7 @@
 # 2) preset 层：整份覆盖 shipped preset 的 config.plugins —— tool-bash 启用、tool-pwsh 禁用。
 #    覆盖是快照：DSH 升级后必须更新 presets/ 快照并重新生成 + diff（docs/design.md §8 / §10）。
 # 3) preset-minimal 不覆盖：它走 persistent-shell（tool-bash-persistent + PTY terminal-bash）这条不同的 seam，v1 不支持。
-# 目标 DSH 版本：0.2.2-rc.3；preset 快照来源：presets
+# 目标 DSH 版本：0.2.2-rc.5；preset 快照来源：presets
 
 # ---- host 层 ----
 - id: pwsh-sandbox
@@ -31,8 +31,8 @@
       disabled: !!js "process.platform !== 'win32'"
       config: {}
 
-# ---- preset 覆盖（快照自 presets/*.patch.yml，目标 DSH 0.2.2-rc.3）----
-# preset standard <- presets/standard.patch.yml (DSH 0.2.2-rc.3)
+# ---- preset 覆盖（快照自 presets/*.patch.yml，目标 DSH 0.2.2-rc.5）----
+# preset standard <- presets/standard.patch.yml (DSH 0.2.2-rc.5)
 - id: preset-standard
   name: '@deepseek-ai/dsh-agent-preset'
   config:
@@ -165,7 +165,7 @@
         name: '@deepseek-ai/dsh-plugin-market/tools'
         disabled: true
 
-# preset ptc <- presets/ptc.patch.yml (DSH 0.2.2-rc.3)
+# preset ptc <- presets/ptc.patch.yml (DSH 0.2.2-rc.5)
 - id: preset-ptc
   name: '@deepseek-ai/dsh-agent-preset'
   config:
@@ -299,7 +299,7 @@
         name: '@deepseek-ai/dsh-plugin-market/tools'
         disabled: true
 
-# preset cordis <- presets/cordis.patch.yml (DSH 0.2.2-rc.3)
+# preset cordis <- presets/cordis.patch.yml (DSH 0.2.2-rc.5)
 - id: preset-cordis
   name: '@deepseek-ai/dsh-agent-preset'
   config:

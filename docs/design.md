@@ -28,7 +28,7 @@
 - Web profile 的 host 层工具行被 `dsh-web-app` 统一禁用，模型可见的工具由 **agent preset**（`preset-standard` / `preset-cordis` / `preset-minimal` / `preset-ptc`）的 `config.plugins` 提供；preset 行是 `@deepseek-ai/dsh-agent-preset` 的声明行，只能用「整份 `config.plugins` 覆盖」的方式改（DSH 官方文档亦如此说明）。本 bundle 的 patch 会在这一层之后再覆盖三个 preset，并把 host 层的 `tool-bash` 重新打开（见下一条：Web 里它被 agent-scope 同名行遮蔽）。
 - 外部 bundle 的 patch 层按 profile `dsh.profile.bundles` 顺序叠加，最后是 profile 自己的 `cordis.patch.yml`（用户层覆盖 bundle 层）。
 - 外部插件在运行时 import 的 `@deepseek-ai/*` 包由 profile 的运行时解析拦截映射到 DSH 安装目录，因此只需声明 `peerDependencies`（兼容性检查依赖它们）与开发期 `devDependencies`（供 tsc 使用）。
-- **目标版本精确固定为 0.2.2-rc.3**：`presets/` 保存该版本**安装**自带的 standard/ptc/cordis 三份 preset 原文（`source.json` 记录版本、来源与三份文件的 sha256），`package.json` 的 devDependencies 精确固定 0.2.2-rc.3、peerDependencies 也写**精确版本**（不是 `~`，否则后续版本会被兼容检查静默放行）；`check:patch` 断言「生成物头部目标版本 = 快照版本 = devDependency 版本」，生成器与测试逐字节校验 `sha256`。**0.2.2 系列改过两次 preset 形状**：rc.1 是 minor 变更（list-agents 并入 tool-subagent-control、modelSelection/modelDiscovery、ptc 改用 tool-executor-ptc、tool-plugin-market/applyPatch 等），rc.3 又加入 tool-office（standard/ptc）、standard 的 skill-filesystem customSkillDirs、tool-subagent-control 的 `interrupt: false` 与 cordis persona 文本；两次都已整份替换快照并更新 sha256 与测试指纹。**不要假设 patch 版本快照不变**，也不要用开发源码检出的 preset 生成 patch。
+- **目标版本精确固定为 0.2.2-rc.5**：`presets/` 保存该版本**安装**自带的 standard/ptc/cordis 三份 preset 原文（`source.json` 记录版本、来源与三份文件的 sha256），`package.json` 的 devDependencies 精确固定 0.2.2-rc.5、peerDependencies 也写**精确版本**（不是 `~`，否则后续版本会被兼容检查静默放行）；`check:patch` 断言「生成物头部目标版本 = 快照版本 = devDependency 版本」，生成器与测试逐字节校验 `sha256`。**0.2.2 系列改过两次 preset 形状**：rc.1 是 minor 变更（list-agents 并入 tool-subagent-control、modelSelection/modelDiscovery、ptc 改用 tool-executor-ptc、tool-plugin-market/applyPatch 等），rc.3 又加入 tool-office（standard/ptc）、standard 的 skill-filesystem customSkillDirs、tool-subagent-control 的 `interrupt: false` 与 cordis persona 文本；两次都已整份替换快照并更新 sha256 与测试指纹。**不要假设 patch 版本快照不变**，也不要用开发源码检出的 preset 生成 patch。
 - host `tool-bash` 行**常开**（`disabled: false`）。曾用 `!!js "!!ctx.get('agentPresets')"` 做「仅 CLI 启用」的门控，但 Loader 在同层服务 active 前就求值该表达式、结果恒为 false；且 tools 注册表只在**同一 scope** 内拒绝重名，Web preset 的 agent-scope `bash` 会遮蔽 host 层同名行，因此常开是安全且诚实的做法。
 - **实测（关键约束）**：在 DSH 的 Windows ACL 沙箱（受限令牌）内，Git Bash 启动即报 `couldn't create signal pipe, Win32 error 5`，WSL 报 `Wsl/E_ACCESSDENIED`；两者都**无法**在受限令牌内运行。因此 bash 执行**不做沙箱约束**——这是用户已确认接受的能力弱化。
 - **但 `sandboxMode` 必须声明**：DSH 的 `permission-presets` 在 `sandboxMode === undefined` 的 shell 执行器上直接拒绝激活（实测安装结果 `application: failed`，GUI 权限预设/投影不可用），并把该值当作会话默认 sandbox 模式。因此执行器的 `sandboxMode` getter 镜像 `ctx.sandboxPolicy.defaultMode`（部署默认 FILE 策略，通常 `workspace-write`）。它**只表示组合事实，不表示 bash 被约束**：`resolve()` 丢弃 per-call `sandboxPolicy`、结果不带 sandbox facts、prompt 明确写「bash 不设限」；`bash` 工具因此会广告 `sandbox_permissions`，但传入的策略不会被执行。
@@ -170,7 +170,7 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
   - `GET` 返回 `{ token, config, hasProfileOverride, warnings, sources, shell }`，`shell` 来自执行器的 `describeResolved()`；
   - `POST` 校验字段后调用 `ctx.configEditor.edit(entry, current => ({ ...current, ...六个字段 }))`：由 Loader 写 profile patch 并热协调，YAML 注释/顺序/引号形态由 DSH 维护；
   - 安全边界：`Origin` 必须等于 `webServer.getOrigin()`；POST 需要本进程生成的 `x-dsh-vsshell-token`（GET 下发）；请求体上限 64 KiB；只监听本机 Web 端口。
-- **Browser 半**（根目录 `client.js`，由 `dsh.client` 加载、无构建）：Module Loader 懒工厂，注册 `settings.section` 一个页面；表单字段与 Host 六字段一致；文案走 `ctx.locale.register/bind('vsshell')`；不写 DOM、不引入 Harness Client 包。**0.2.2-rc.3 的 `settings.section` 注册契约只含 `id`/`order`/`label`**（原来的 `locale`/`inject` 注册选项不在契约里），因此组件通过 factory 闭包拿 `t`/`ctx`，并在组件内用 `ctx.locale.subscribe()` 订阅语言变化触发重渲染；`label` 仍是 thunk，随投影重读。
+- **Browser 半**（根目录 `client.js`，由 `dsh.client` 加载、无构建）：Module Loader 懒工厂，注册 `settings.section` 一个页面；表单字段与 Host 六字段一致；文案走 `ctx.locale.register/bind('vsshell')`；不写 DOM、不引入 Harness Client 包。**0.2.2-rc.5 的 `settings.section` 注册契约只含 `id`/`order`/`label`**（原来的 `locale`/`inject` 注册选项不在契约里），因此组件通过 factory 闭包拿 `t`/`ctx`，并在组件内用 `ctx.locale.subscribe()` 订阅语言变化触发重渲染；`label` 仍是 thunk，随投影重读。
 - **引号兼容**：`unquoteScalar()` 去掉成对单/双引号（并处理 `\\`、`''` 转义），`readBoolean`/`readNumber` 接受带引号的字符串；`readPanelConfig` 对缺省/未知值回退默认；`validatePanelConfig` 在写入前统一归一化。读取路径完全交给 YAML 层（profile patch 里引号怎么写都能读），因此"引号有无"只影响用户输入框里的文本，不影响持久化格式。
 - **不手写 YAML**：面板自己不做 profile patch 文本编辑；`configEditor` 是唯一写入通道（失败会回滚并抛错），面板把错误原文返回给表单。
 
@@ -190,7 +190,7 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
 生成器 `scripts/gen-preset-patch.mjs` 由固定模板 + 仓库内 `presets/` 快照合成，输出固定头注释（含「目标 DSH 版本」行）。结构：
 
 ```yaml
-# 目标 DSH 版本：0.2.2-rc.3；preset 快照来源：presets
+# 目标 DSH 版本：0.2.2-rc.5；preset 快照来源：presets
 # ---- host 层 ----
 - id: pwsh-sandbox
   name: '@deepseek-ai/dsh-pwsh-sandbox'
@@ -213,7 +213,7 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
       disabled: !!js "process.platform !== 'win32'"
       config: {}
 
-# preset 覆盖（快照自 presets/{standard,ptc,cordis}.patch.yml，目标 DSH 0.2.2-rc.3）
+# preset 覆盖（快照自 presets/{standard,ptc,cordis}.patch.yml，目标 DSH 0.2.2-rc.5）
 - id: preset-standard
   name: '@deepseek-ai/dsh-agent-preset'
   config:
@@ -257,7 +257,7 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
 
 ## 10. 风险与已知限制
 
-1. **preset 覆盖是快照，且版本固定**：`presets/` 是 0.2.2-rc.3 **安装**的逐字快照（minor 升级已换形状：delegation 用 tool-subagent-control + modelSelection/modelDiscovery，ptc 用 tool-executor-ptc，新增 tool-plugin-market/applyPatch）；DSH 升级后必须整份替换快照、更新 `source.json` 与依赖版本并重新 `gen:patch` + diff 审核。用其它版本或开发源码生成的 preset 会被 `check:patch` 的版本断言拒绝（源码检出形状可能不同，见 §2）。
+1. **preset 覆盖是快照，且版本固定**：`presets/` 是 0.2.2-rc.5 **安装**的逐字快照（minor 升级已换形状：delegation 用 tool-subagent-control + modelSelection/modelDiscovery，ptc 用 tool-executor-ptc，新增 tool-plugin-market/applyPatch）；DSH 升级后必须整份替换快照、更新 `source.json` 与依赖版本并重新 `gen:patch` + diff 审核。用其它版本或开发源码生成的 preset 会被 `check:patch` 的版本断言拒绝（源码检出形状可能不同，见 §2）。
 2. **用户层 preset 编辑会覆盖本 bundle 的修正**：安装前在 Web 编辑器保存过 preset 时，profile 的 `cordis.patch.yml` 会有 `preset-*` 行按 id 整份覆盖 `config.plugins`（用户层最后生效），可能把 `tool-pwsh` 又开回来。排障：删掉 profile 里的这些 preset 行，或安装后重新保存 preset。README §9 给出步骤。
 3. **host `tool-bash` 常开依赖 scope 遮蔽语义**：tools 注册表只在同一 scope 内拒绝重名，agent-scope 的 preset `bash` 遮蔽 host 层同名行；此结论来自对 DSH tools registry 源码的核对，需在插入检查时确认模型目录里只有一个 `bash`。
 4. **用户自定义 preset 不覆盖**：`.agent-presets/` 下用户自建 preset（例如 router-standard）不在覆盖范围；这些 preset 若自带 shell 机制由用户自行处理。
@@ -287,5 +287,6 @@ export default class VsshellBashExecutor extends LocalBashExecutor {
 9. **可视化配置面板**：[完成代码/静态验证，待重启后 UI 验证] Host 半 `src/panel.ts`（`/dsh-vsshell-panel` 同源 JSON 路由 + 引号归一化 + `configEditor` 写入）与 browser 半 `client.js`（`settings.section` 页面）已加入；插件版本 0.2.0，bundle insert 增加 `dsh-vsshell-panel` 行；`tests/panel.test.mjs` 覆盖引号/裸值归一化、校验、GET/POST/token/跨站拒绝；`check` 50/50 PASS。**未验证**：Web 页面里的实际渲染、保存后的热协调与重启后工具切换，等重启后确认（README 4.4 是验收清单）。
 10. **升级 DSH 0.2.1-rc.5**：[完成代码/静态验证，待重启] 与 rc.3 升级同因：peer 精确固定 rc.3 被 rc.5 运行时兼容检查拒绝（工具回退 `pwsh`）。rc.5 安装的 shipped preset 仍与 rc.2/rc.3 逐字节相同（三份 sha256 不变）→ `source.json` 只改 `dshVersion`/`origin`/`extractedAt`；`package.json` 的 dev/peer 精确改 rc.5（cordis 仍 4.0.5、schemastery 3.18.5），插件版本升至 0.2.1；`pnpm install` 后 typecheck 直接通过；`gen:patch` 只改版本行；`check` 50/50 PASS；rc.5 依赖下 smoke custom/Cygwin 10/10 PASS。核对 rc.5 接口：`permission-presets` 仍要求 `sandboxMode` 非空、`tool-bash` sandboxPolicy seam 未变、`configEditor.edit`/`webServer.register` 未变 → `src/`、`client.js` 无需改动。
 11. **升级 DSH 0.2.2-rc.1（minor）**：[完成代码/静态验证，待重启] 这次不是只改版本号：**shipped preset 形状变了**（`tool-subagent-list-agents` 并入 `tool-subagent-control`、`modelSelectionSettings` → `modelSelection`/`modelDiscovery`、ptc 改用 `tool-executor-ptc` 且去掉 `tool-presentation`、新增 `tool-plugin-market` 与 `tool-fs.applyPatch`、standard 的 `tool-plugin-manager` 也改走 `!!js`），且 **cordis 4.0.5 → 4.1.0**、schemastery 3.18.5 → 3.19.0。处理：从 0.2.2-rc.1 安装的 `app.asar` 提取三份 preset 整份替换快照（sha256 全变），`source.json` 更新版本/来源/哈希；`package.json` 的 DSH dev/peer 精确改 `0.2.2-rc.1`、cordis `4.1.0`、schemastery dev `3.19.0`/peer `^3.19.0`，插件版本 `0.3.0`；`pnpm install` 后 typecheck 直接通过；重写 `tests/patch.test.mjs` 的版本指纹；`gen:patch` 生成新生成物；`check` 50/50 PASS；依赖下 smoke custom/Cygwin 10/10 PASS。**客户端契约也变了**：`settings.section` 注册只接受 `id`/`order`/`label`，`client.js` 改为闭包传 `t`/`ctx` + `ctx.locale.subscribe()` 重渲染；`permission-presets`/`tool-bash`/`configEditor`/`webServer` 的服务 seam 未变。
-12. **升级 DSH 0.2.2-rc.3（patch 版本也会改 preset）**：[完成代码/静态验证] rc.3 相对 rc.1 改动：standard/ptc 新增 `tool-office` 行、standard 的 `skill-filesystem` 增加 `customSkillDirs`、delegation 的 `tool-subagent-control` 增加 `interrupt: false`、cordis persona 文本更新。处理：整份替换三份快照（sha256 全变）、更新 `source.json`、DSH dev/peer 精确改 `0.2.2-rc.3`、插件版本 `0.3.1`；typecheck 通过；`gen:patch` 由 420 行变为 433 行；`check` 50/50 PASS；rc.3 依赖下 smoke custom/Cygwin 10/10 PASS。**结论**：patch 版本也可能改 preset 形状，升级必须逐次提取安装快照并跑 diff。
+12. **升级 DSH 0.2.2-rc.3（patch 版本也会改 preset）**：[完成代码/静态验证] rc.3 相对 rc.1 改动：standard/ptc 新增 `tool-office` 行、standard 的 `skill-filesystem` 增加 `customSkillDirs`、delegation 的 `tool-subagent-control` 增加 `interrupt: false`、cordis persona 文本更新。处理：整份替换三份快照（sha256 全变）、更新 `source.json`、DSH dev/peer 精确改 `0.2.2-rc.3`、插件版本 `0.3.1`；typecheck 通过；`gen:patch` 由 420 行变为 433 行；`check` 50/50 PASS；rc.3 依赖下 smoke custom/Cygwin 10/10 PASS。
 13. **修复热安装生命周期（duplicate `ctx.shell`）**：[完成] 用户从 GitHub URL 安装时，热安装让旧 `pwsh-sandbox` 仍占着 `ctx.shell`，而 bundle patch 已禁用 `tool-pwsh`，旧实现直接注册第二个 `shell` 服务导致激活失败、无任何 shell 工具。修复：默认导出改为延迟挂载 wrapper，等待旧 provider 释放后自动挂载（200ms 轮询、5s 后 warn、不 throw），保留 load-time 配置校验；`tests/executor.test.mjs` 增加两条 lifecycle 回归；插件版本 `0.3.2`，README §3.2/§9.10 与 AGENTS §4.14/§7 同步。`check` 52/52 PASS。
+14. **升级 DSH 0.2.2-rc.5**：[完成] rc.5 的 **shipped preset 与 rc.3 逐字节相同**（三份 sha256 不变），cordis 仍 4.1.0、schemastery 3.19.0；`permission-presets`/`tool-bash`/`configEditor`/`webServer` 的 seam 均未变。处理：只更新 `source.json` 的 `dshVersion`/`origin`/`extractedAt`、`package.json` 的 DSH dev/peer 精确改 `0.2.2-rc.5`、插件版本 `0.3.3`；`gen:patch` 仅版本行变化；`check` 52/52 PASS、smoke custom/Cygwin 10/10 PASS。**结论**：patch 版本升级也要先提取安装快照比对，不能凭版本号假设。

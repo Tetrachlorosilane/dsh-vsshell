@@ -187,7 +187,7 @@ test('preset 覆盖恰好是 standard/ptc/cordis，且启用 tool-bash、禁用 
   }
 })
 
-test('preset 快照是目标版本（0.2.2-rc.3 安装）的特征内容（版本指纹，升级 DSH 时按 AGENTS.md §8 同步）', () => {
+test('preset 快照是目标版本（0.2.2-rc.5 安装）的特征内容（版本指纹，升级 DSH 时按 AGENTS.md §8 同步）', () => {
   // 0.2.2 reshaped the shipped presets (list-agents folded into
   // tool-subagent-control, modelSelectionSettings became modelSelection +
   // modelDiscovery, ptc switched to tool-executor-ptc, plugin-market /
@@ -201,7 +201,7 @@ test('preset 快照是目标版本（0.2.2-rc.3 安装）的特征内容（版�
     const control = delegation.config.find(plugin => plugin?.id === 'tool-subagent-control')
     assert.ok(control, `preset ${preset}: delegation must contain tool-subagent-control`)
     assert.equal(control.name, '@deepseek-ai/dsh-tool-subagent-control')
-    assert.equal(control.config.interrupt, false, `preset ${preset}: 0.2.2-rc.3 disables subagent interrupt`)
+    assert.equal(control.config.interrupt, false, `preset ${preset}: 0.2.2-rc.5 disables subagent interrupt`)
     assert.ok(
       !delegation.config.some(plugin => plugin?.id === 'tool-subagent-list-agents'),
       `preset ${preset}: 0.2.2-rc.1 removes the separate list-agents row`,
@@ -256,7 +256,7 @@ test('!!js 表达式原样保留（plugin-manager、skill-filesystem）', () => 
   assert.equal(pluginRow(presetRow(rows, 'ptc'), 'tool-plugin-manager').disabled, true)
 
   // The gnarliest expression: a `!!js` sequence item under config.customSkillDirs
-  // (cordis and, since 0.2.2-rc.3, standard).
+  // (cordis and, since 0.2.2-rc.5, standard).
   const skill = pluginRow(presetRow(rows, 'cordis'), 'skill-filesystem')
   assert.ok(Array.isArray(skill.config.customSkillDirs))
   assert.equal(skill.config.customSkillDirs.length, 1)

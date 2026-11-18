@@ -11,7 +11,7 @@
 ## 1. 这个仓库是干什么的（一句话架构）
 
 本包是 DSH 的 **host 插件**，注册 `ctx.shell`（一个可配置的 bash 执行器），替代 win32 上默认的 pwsh，
-并让内置 `tool-bash` 真正可用。**目标 DSH 版本精确固定为 `0.2.2-rc.3`**（见 §4.8）。
+并让内置 `tool-bash` 真正可用。**目标 DSH 版本精确固定为 `0.2.2-rc.5`**（见 §4.8）。
 
 实现方式：继承 `@deepseek-ai/dsh-bash-local` 的 `LocalBashExecutor`，**只覆盖 `resolve()` 与 `execute()`**
 （外加一次 bash 目标解析与一条 system-prompt section）。子进程生命周期、超时/取消、输出收集与 spill、
@@ -68,7 +68,7 @@ preset 层（standard / ptc / cordis；agent scope）
 | `scripts/smoke-executor.mjs` | 真机冒烟：唯一真正启动 bash 的脚本 | 可改 |
 | `tests/detect.test.mjs` | detect 纯函数单测（`node:test`，注入假 exists/probe） | 可改 |
 | `tests/executor.test.mjs` | 执行器接线单测：裸 cordis Context + 假 `systemPrompt`；假 `subprocess` 既用于"禁止 spawn"断言，也用于捕获 `execute()` 交给底层的 argv/env | 可改 |
-| `tests/patch.test.mjs` | `cordis.patch.yml` 结构 + 目标版本 + 目标版本指纹（当前 0.2.2-rc.3 安装形状）+ 生成物一致性（自包含，不写文件、不起 shell） | 可改，但不要为变绿而放松断言 |
+| `tests/patch.test.mjs` | `cordis.patch.yml` 结构 + 目标版本 + 目标版本指纹（当前 0.2.2-rc.5 安装形状）+ 生成物一致性（自包含，不写文件、不起 shell） | 可改，但不要为变绿而放松断言 |
 | `cordis.patch.yml` | **生成物**：host 行 + preset 覆盖，头注释含目标 DSH 版本 | **禁止手改**（§5） |
 | `lib/` | **构建产物**（`tsc` 输出 `index.js` / `detect.js` / `.d.ts`） | 不手改；随仓库提交（§8） |
 | `docs/design.md` | 设计规划与约束，README / AGENTS / 代码的共同事实来源 | 改行为时同步更新 |
@@ -131,12 +131,12 @@ preset 层（standard / ptc / cordis；agent scope）
 | 4.5 | 不伪造 sandbox **执行**能力：`resolve()` 把 `sandboxPolicy` 置 `undefined`；结果不带 `sandbox` facts；prompt section 必须保留「does NOT confine」，并**明确写出 `sandbox_permissions` / `justification` 对 bash 无效**；README 必须有醒目安全提醒。4.1 的声明是组合事实，不是执行承诺 | 沙箱确实没做（用户已确认接受该弱化）。只声明组合所需的部署默认模式可以，但不得让工具结果/文档暗示命令被约束 |
 | 4.6 | 解析失败不阻塞 host 启动，也不静默降级到 pwsh | 失败要进 prompt section 与工具调用错误（含候选与原因），让用户能自己修环境 |
 | 4.7 | 生成物插入的 `dsh-vsshell` 与 `dsh-vsshell-panel` 两行都必须 `disabled: !!js "process.platform !== 'win32'"` | POSIX 上 shipped `bash-sandbox` 已提供 `ctx.shell`，再挂一个 provider 就是重复服务注册；面板也没有可配置的执行器 |
-| 4.8 | **目标版本固定**：`presets/source.json` 的 `dshVersion` 必须等于 `package.json` 的 `devDependencies["@deepseek-ai/dsh-bash-local"]`（比较时剥掉 `~`/`^`），也必须等于生成物头部的 `# 目标 DSH 版本：<X>；`。`peerDependencies` 里的 `@deepseek-ai/dsh-*` 与 `@deepseek-ai/cordis` 也用**精确版本**（不是 `~`/`^`），让 DSH 的兼容性检查在其它版本上**拒绝**本插件；`check:patch` 的 `peerPinProblems()` 会机器断言这一点（范围或版本不一致直接 fail）。`check` 的版本断言**不得放宽或删除** | 三处版本一旦不一致，说明 patch 由别的 DSH 版本（或开发源码检出）生成，装上去会静默丢行/多行。**0.2.2 系列改过两次 preset 形状**：rc.1 是 minor 变更（list-agents 并入 tool-subagent-control、modelSelection/modelDiscovery、ptc 改用 tool-executor-ptc、plugin-market 等），rc.3 又新增 tool-office（standard/ptc）、standard 的 skill-filesystem customSkillDirs、tool-subagent-control 的 `interrupt: false` 与 cordis persona 文本；两次都已整份替换快照并同步 sha256 与指纹。**不要假设 patch 版本快照不变**；开发源码检出的 preset 形状也可能不同，不能当安装快照。peer 用范围会让后续版本静默放行（例如 `~0.2.1-rc.2` 对 `0.2.1-rc.5`/`0.2.2-rc.3` 也 satisfies，导致升级后 bundle 未被兼容检查放行、工具回退到 pwsh） |
+| 4.8 | **目标版本固定**：`presets/source.json` 的 `dshVersion` 必须等于 `package.json` 的 `devDependencies["@deepseek-ai/dsh-bash-local"]`（比较时剥掉 `~`/`^`），也必须等于生成物头部的 `# 目标 DSH 版本：<X>；`。`peerDependencies` 里的 `@deepseek-ai/dsh-*` 与 `@deepseek-ai/cordis` 也用**精确版本**（不是 `~`/`^`），让 DSH 的兼容性检查在其它版本上**拒绝**本插件；`check:patch` 的 `peerPinProblems()` 会机器断言这一点（范围或版本不一致直接 fail）。`check` 的版本断言**不得放宽或删除** | 三处版本一旦不一致，说明 patch 由别的 DSH 版本（或开发源码检出）生成，装上去会静默丢行/多行。**0.2.2 系列改过两次 preset 形状**：rc.1 是 minor 变更（list-agents 并入 tool-subagent-control、modelSelection/modelDiscovery、ptc 改用 tool-executor-ptc、plugin-market 等），rc.3 又新增 tool-office（standard/ptc）、standard 的 skill-filesystem customSkillDirs、tool-subagent-control 的 `interrupt: false` 与 cordis persona 文本；两次都已整份替换快照并同步 sha256 与指纹。**不要假设 patch 版本快照不变**；开发源码检出的 preset 形状也可能不同，不能当安装快照。peer 用范围会让后续版本静默放行（例如 `~0.2.1-rc.2` 对 `0.2.1-rc.5`/`0.2.2-rc.5` 也 satisfies，导致升级后 bundle 未被兼容检查放行、工具回退到 pwsh） |
 | 4.9 | **host `tool-bash` 行常开**（`disabled: false`），不要改回 `!!js` 门控 | 曾用 `!!js "!!ctx.get('agentPresets')"` 做"仅 CLI 启用"，但 Loader 在同层服务 active 前求值该表达式，结果恒 `false` → 门控形同虚设（Web 上 host `tool-bash` 也会启用）；且 Web/preset 组合里 preset 的 agent-scope 同名行会遮蔽 host 行，**同 scope 重名才报错**，所以常开是安全且诚实的 |
 | 4.10 | 等待目标解析必须受本次调用约束（`awaitTarget(spec)`：`signal` + 前台 `timeoutMs`） | 只 `await` 后台 Promise 会让一次冷启动/WSL 慢探测无视调用方的超时与取消；这条曾修过一次，别退回去 |
 | 4.11 | `execute()` 必须先校验 `workdir` 存在（`assertWorkdir`），错误要写明来源/家族/exe 与可接受的 POSIX 前缀；不要让 `spawn ... ENOENT` 裸奔 | 模型分不清 `ENOENT` 是 bash 缺失还是工作目录写错，就无法自行纠正；失败原因必须可读 |
 | 4.12 | **prompt section 最小化**：只放每次调用都需要的差异事实（Shell/invocation、路径提示、`DSH_*`、沙箱事实），**不要重复** tool-bash 原生 description 的内容（fresh shell、用 `workdir` 代替 `cd`）；失败细节只进错误消息；长度上限由 executor 单测断言（ready 状态 ≤ 600 字符） | 该 section 会进入每一轮 system prompt，冗余即持续的上下文负担；失败信息只在真失败时消耗 token 才符合最小原则 |
-| 4.13 | **配置面板只经 `configEditor` 写 profile 用户层**，不要手写 YAML；路由仅同源（`Origin` 校验 + 页面 token，POST 需要 `x-dsh-vsshell-token`）；输入先做引号归一化（单/双/裸值等价，数字/布尔允许带引号字符串）；只改 6 个自定义字段，不动预算键；browser half 保持无构建的 Module Loader 工厂。0.2.2-rc.3 的 `settings.section` 注册契约只含 `id`/`order`/`label`：组件通过 factory 闭包拿 `t`/`ctx`，并用 `ctx.locale.subscribe()` 触发本地化重渲染，不要再传 `locale`/`inject` 注册选项 | 面板是用户直接改运行配置的入口：手写 YAML 会破坏注释/顺序；不校验来源就是任意本地页面可改 shell 路径；引号差异是用户从 patch 复制值时最常见的输入形态；slot 契约变化会让旧注册选项失效 |
+| 4.13 | **配置面板只经 `configEditor` 写 profile 用户层**，不要手写 YAML；路由仅同源（`Origin` 校验 + 页面 token，POST 需要 `x-dsh-vsshell-token`）；输入先做引号归一化（单/双/裸值等价，数字/布尔允许带引号字符串）；只改 6 个自定义字段，不动预算键；browser half 保持无构建的 Module Loader 工厂。0.2.2-rc.5 的 `settings.section` 注册契约只含 `id`/`order`/`label`：组件通过 factory 闭包拿 `t`/`ctx`，并用 `ctx.locale.subscribe()` 触发本地化重渲染，不要再传 `locale`/`inject` 注册选项 | 面板是用户直接改运行配置的入口：手写 YAML 会破坏注释/顺序；不校验来源就是任意本地页面可改 shell 路径；引号差异是用户从 patch 复制值时最常见的输入形态；slot 契约变化会让旧注册选项失效 |
 | 4.14 | **默认导出必须是延迟挂载 wrapper**：`VsshellBashExecutor` 只做 config 校验 + 在 `ctx.shell` 空闲时构造 `VsshellService`；被占用时用 200ms 轮询等待旧 provider 卸载（5s 后 warn 一次），**禁止把 `Service` 子类直接作为默认导出**，也禁止在等待路径里 throw | `plugin_manager install_bundle` 是热安装：新 bundle 叠加时旧 `pwsh-sandbox` 的 `SandboxPwshExecutor` 可能仍占着 `ctx.shell`；Cordis 同一 context 只允许一个 `shell` 服务，直接注册会抛 `service "shell" has been registered`，导致整个 executor 激活失败、连 `pwsh` 也已被 patch 禁用 → 没有任何 shell 工具。回归测试见 `tests/executor.test.mjs` 的 lifecycle 两条用例 |
 
 ### 4.3 配置字段同步清单
@@ -246,7 +246,7 @@ preset 层（standard / ptc / cordis；agent scope）
     用例还显式给了 `bashPath`），**零探测**。
   - `tests/patch.test.mjs`（import `../scripts/gen-preset-patch.mjs` 与 `../scripts/check-patch.mjs`）：
     **自包含**（快照在仓库里，没有跳过用例），断言结构、目标版本三处一致、生成物逐字一致，
-    并用**目标版本指纹**确认快照没被换成别的版本（当前 0.2.2-rc.3 安装形状）：三个 preset 的 delegation 组都含
+    并用**目标版本指纹**确认快照没被换成别的版本（当前 0.2.2-rc.5 安装形状）：三个 preset 的 delegation 组都含
     `tool-subagent-control`（`config.interrupt: false`）、`tool-subagent` 用 `modelSelection`/`modelDiscovery`（不再有独立的 `tool-subagent-list-agents` 行与 `modelSelectionSettings`）；
     ptc 带 `tool-executor-ptc` 且没有 `tool-presentation`；standard/cordis 的 `tool-plugin-manager` 都走
     `!!js "!ctx.get('profileContext')"`（ptc 仍为字面 `disabled: true`）；standard 的 `tool-fs.applyPatch: false`、`tool-plugin-market` 存在；
@@ -294,7 +294,7 @@ preset 层（standard / ptc / cordis；agent scope）
    预算字段有变化就按 §4.3 同步。
 5. **diff 审阅**：`git diff presets/ cordis.patch.yml package.json`，逐项确认 —— 新增/删除的 preset 行、
    `tool-bash` 仍启用、`tool-pwsh` 仍 `disabled: true`、`!!js` 与多行块原样保留、insert 行仍 win32-only；
-   `tests/patch.test.mjs` 的**版本指纹**要按新版本**安装**的真实形状更新（0.2.2-rc.3 的 delegation 是 `tool-subagent-control` + `modelSelection`/`modelDiscovery`，ptc 用 `tool-executor-ptc`，standard/cordis 的 `tool-plugin-manager` 走 `!!js`；若误用旧或开发源码快照，会看到 `tool-subagent-list-agents`、`modelSelectionSettings`、`tool-presentation` 等旧形状）。
+   `tests/patch.test.mjs` 的**版本指纹**要按新版本**安装**的真实形状更新（0.2.2-rc.5 的 delegation 是 `tool-subagent-control` + `modelSelection`/`modelDiscovery`，ptc 用 `tool-executor-ptc`，standard/cordis 的 `tool-plugin-manager` 走 `!!js`；若误用旧或开发源码快照，会看到 `tool-subagent-list-agents`、`modelSelectionSettings`、`tool-presentation` 等旧形状）。
 6. **重装 + 插入检查（第二阶段）**：`pnpm run build` 后重新 `plugin_manager install_bundle`（或重装 bundle）
    并重启，验证 `bash` 工具存在、`pwsh` 不存在、四个来源可切换、后台任务/超时/输出截断正常。
 
@@ -304,7 +304,9 @@ preset 层（standard / ptc / cordis；agent scope）
 
 **升级实例 3（0.2.1-rc.5 → 0.2.2-rc.1，2026-11-04）**：这是 **minor 升级**，不止版本号：shipped preset 形状变了（list-agents 并入 `tool-subagent-control`、`modelSelection`/`modelDiscovery`、ptc 改 `tool-executor-ptc`、`tool-plugin-market`、`tool-fs.applyPatch`），且 cordis 4.0.5 → **4.1.0**、schemastery 3.18.5 → 3.19.0。按流程整份替换快照 + 更新三份 sha256/`source.json` + 重写 `tests/patch.test.mjs` 指纹；`package.json` dev/peer 精确改 `0.2.2-rc.1`、cordis `4.1.0`、schemastery dev `3.19.0`/peer `^3.19.0`；typecheck 通过；`gen:patch` 与新 preset 一致；`check` 50/50 PASS；smoke custom/Cygwin 10/10。**客户端契约也变了**：0.2.2-rc.1 的 `settings.section` 注册只接受 `id`/`order`/`label`（旧的 `locale`/`inject` 选项不再文档化），`client.js` 已改为闭包传 `t`/`ctx` + `ctx.locale.subscribe()` 触发重渲染。`permission-presets`、`tool-bash`、`configEditor`、`webServer` 的服务 seam 仍未变。
 
-**升级实例 4（0.2.2-rc.1 → 0.2.2-rc.3，2026-11-13）**：**patch 版本也会改 shipped preset**：standard/ptc 新增 `tool-office`，standard 的 `skill-filesystem` 增加 `customSkillDirs`，delegation 的 `tool-subagent-control` 增加 `interrupt: false`，cordis persona 文本更新。处理：整份替换三份快照（sha256 全变）、更新 `source.json`、DSH dev/peer 精确改 `0.2.2-rc.3`、插件版本 `0.3.1`、扩充测试指纹（tool-office/customSkillDirs/interrupt/persona）；`check` 50/50 PASS、smoke custom/Cygwin 10/10 PASS。**结论**：每次升级（含 patch 版本）都必须重新提取安装快照并 diff，不能凭版本号假设。
+**升级实例 4（0.2.2-rc.1 → 0.2.2-rc.3，2026-11-13）**：**patch 版本也会改 shipped preset**：standard/ptc 新增 `tool-office`，standard 的 `skill-filesystem` 增加 `customSkillDirs`，delegation 的 `tool-subagent-control` 增加 `interrupt: false`，cordis persona 文本更新。处理：整份替换三份快照（sha256 全变）、更新 `source.json`、DSH dev/peer 精确改 `0.2.2-rc.3`、插件版本 `0.3.2`（生命周期修复另计）、扩充测试指纹（tool-office/customSkillDirs/interrupt/persona）；`check` 50/50 PASS、smoke custom/Cygwin 10/10 PASS。
+
+**升级实例 5（0.2.2-rc.3 → 0.2.2-rc.5，2026-11-18）**：rc.5 的 **shipped preset 与 rc.3 逐字节相同**（三份 sha256 不变），cordis 仍 4.1.0、schemastery 3.19.0；`permission-presets`（仍要求 `sandboxMode`）、`tool-bash`（sandboxMode/escalation seam）、`configEditor.edit`、`webServer.register/getOrigin` 均未变。处理：只更新 `presets/source.json` 的 `dshVersion`/`origin`/`extractedAt`、`package.json` 的 DSH dev/peer 精确改 `0.2.2-rc.5`、插件版本 `0.3.3`，重跑 `gen:patch`（仅版本行变化）；`check` 52/52 PASS、smoke custom/Cygwin 10/10 PASS。**结论**：patch 版本升级也要先提取安装快照比对，确认边界后再决定是否替换；不能凭版本号假设。
 
 关于 `lib/`：它是构建产物，但**随仓库提交**。原因：安装时 profile 拿到的是 `link:` 指向本仓库的目录，
 DSH 直接加载 `lib/index.js`，不走构建。**改了 `src/` 不 `pnpm run build` 就 install，等于装了个旧版本。**

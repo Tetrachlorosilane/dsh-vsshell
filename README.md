@@ -29,17 +29,17 @@
 | 项 | 要求 |
 |---|---|
 | 操作系统 | Windows 10 / 11（x64） |
-| DSH | **0.2.2-rc.3（精确固定）**，Desktop Web profile；CLI / headless 亦兼容 |
+| DSH | **0.2.2-rc.5（精确固定）**，Desktop Web profile；CLI / headless 亦兼容 |
 | Node.js | ≥ 22（运行时用 DSH 内置 Node；仅构建/开发时需要本机 Node） |
 | bash 来源 | 可选其一：Git for Windows（推荐）、WSL 发行版、Cygwin、自定义 bash 路径 |
 | 权限 | 安装 bundle 需要 DSH 会话的 full-access 审批 |
 
-本插件**不跨 DSH 版本兼容**，目标版本精确固定为 0.2.2-rc.3：
+本插件**不跨 DSH 版本兼容**，目标版本精确固定为 0.2.2-rc.5：
 
 - `presets/` 里保存该版本安装自带的 `standard` / `ptc` / `cordis` 三份 preset 原文，`presets/source.json` 记录 `dshVersion`、提取来源与三份文件的 `sha256`（生成器与测试逐字节校验，手改内容会被拒绝）；
-- `package.json` 的 `devDependencies` 精确固定 `0.2.2-rc.3`，`peerDependencies` 里的 `@deepseek-ai/dsh-*` 也写**精确版本** `0.2.2-rc.3`（`@deepseek-ai/cordis` 精确跟随该 DSH 附带的 `4.1.0`）。DSH 升到其它版本时兼容性检查会**拒绝**本插件，而不是静默套用错版本的 preset 形状；
+- `package.json` 的 `devDependencies` 精确固定 `0.2.2-rc.5`，`peerDependencies` 里的 `@deepseek-ai/dsh-*` 也写**精确版本** `0.2.2-rc.5`（`@deepseek-ai/cordis` 精确跟随该 DSH 附带的 `4.1.0`）。DSH 升到其它版本时兼容性检查会**拒绝**本插件，而不是静默套用错版本的 preset 形状；
 - `pnpm run check:patch` 断言「生成物头部的目标版本 = preset 快照版本 = `@deepseek-ai/dsh-bash-local` devDependency 版本」，三者不一致直接失败；
-- 不要用**开发源码检出**里的 preset 生成 patch：发行安装的 preset 才是唯一依据。0.2.2 系列**改过两次 preset 形状**：rc.1 是 minor 变更（`tool-subagent-list-agents` 并入 `tool-subagent-control`、`modelSelectionSettings` 换成 `modelSelection`/`modelDiscovery`、ptc 改用 `tool-executor-ptc` 取代 `tool-presentation`、新增 `tool-plugin-market`/`applyPatch` 配置），rc.3 又新增 `tool-office`（standard/ptc）、standard 的 `skill-filesystem.customSkillDirs`、`tool-subagent-control.interrupt: false` 并更新 cordis persona 文本。两次升级都已整份替换快照、更新 sha256 与测试指纹；**不要假设 patch 版本不会改 preset**。
+- 不要用**开发源码检出**里的 preset 生成 patch：发行安装的 preset 才是唯一依据。0.2.2 系列**改过两次 preset 形状**：rc.1 是 minor 变更（`tool-subagent-list-agents` 并入 `tool-subagent-control`、`modelSelectionSettings` 换成 `modelSelection`/`modelDiscovery`、ptc 改用 `tool-executor-ptc` 取代 `tool-presentation`、新增 `tool-plugin-market`/`applyPatch` 配置），rc.3 又新增 `tool-office`（standard/ptc）、standard 的 `skill-filesystem.customSkillDirs`、`tool-subagent-control.interrupt: false` 并更新 cordis persona 文本。两次升级都已整份替换快照、更新 sha256 与测试指纹；**不要假设 patch 版本不会改 preset**。`0.2.2-rc.5` 的 shipped preset 与 `rc.3` **逐字节相同**，本次升级只改版本与依赖 pin。
 
 `@deepseek-ai/*` 依赖以 `peerDependencies` 形式声明，运行时由 profile 的模块解析映射到 DSH 安装目录，不需要在 DSH 里单独安装这些包。
 
@@ -89,8 +89,8 @@ target: <本仓库的绝对路径>
 | `bash` 工具 | 工具列表中存在 `bash` |
 | `pwsh` 工具 | 不存在（被禁用） |
 | 当前 preset | `standard` / `cordis` / `ptc` 之一（三者已被覆盖） |
-| `list_agents` 工具 | 存在。0.2.2-rc.3 由 preset 的 delegation 里 `tool-subagent-control` 提供（旧 rc.2–rc.5 是独立的 `tool-subagent-list-agents` 行），preset 被整份覆盖后仍然保留 |
-| `ptc` preset 的 PTC 呈现 | 仍在。0.2.2-rc.3 用 `tool-executor-ptc`（旧版是 `tool-presentation`），preset 覆盖不会丢掉它 |
+| `list_agents` 工具 | 存在。0.2.2-rc.5 由 preset 的 delegation 里 `tool-subagent-control` 提供（0.2.1 系列的 rc.2–rc.5 是独立的 `tool-subagent-list-agents` 行），preset 被整份覆盖后仍然保留 |
+| `ptc` preset 的 PTC 呈现 | 仍在。0.2.2-rc.5 用 `tool-executor-ptc`（旧版是 `tool-presentation`），preset 覆盖不会丢掉它 |
 | 执行 `echo hello` | 返回 `hello` |
 | 执行 `pwd` | 按来源显示：Git Bash `/c/Users/...`、WSL `/mnt/c/Users/...`、Cygwin `/cygdrive/c/Users/...` |
 | 退出码 | `exit 42` 能正确回传 42 |
@@ -357,7 +357,7 @@ Cygwin 的 `/etc/profile` 会把 login shell `cd` 到 `$HOME`，这会悄悄破�
 | host 层 `tool-pwsh` | 禁用 |
 | `preset-standard` | 整份覆盖，改为启用 `tool-bash`、禁用 `tool-pwsh` |
 | `preset-cordis` | 同上 |
-| `preset-ptc` | 同上（0.2.2-rc.3 的 `tool-executor-ptc` 等其它子插件原样保留） |
+| `preset-ptc` | 同上（0.2.2-rc.5 的 `tool-executor-ptc` 等其它子插件原样保留） |
 | `preset-minimal` | **不覆盖**。它使用 persistent PTY shell（`tool-bash-persistent` + `terminal-bash`），是另一条 seam，本插件 v1 不接管 |
 | 用户自建 preset（如 `.agent-presets/` 下的自定义 preset） | **不覆盖**。其自带插件列表原样保留；不过 host 层 `tool-bash` 常开，所以默认仍会继承全局 `bash` 工具（除非该 preset 自己用 `tools.restrict` 排除了它，或自带私有 shell 机制） |
 
@@ -397,7 +397,7 @@ WSL 不会继承 Windows 环境变量。插件通过 `WSLENV` 只转发这些变
 | `workdir` 不存在/路径语法不对 | 在 spawn 前被拒绝，错误会写明 `Resolved shell: source "...", family, exe` 和可接受的前缀（`/cygdrive/<d>`、`/<d>`、`/mnt/<d>`），便于模型自行纠正；不会出现只报 `ENOENT` 的情况 |
 | `verify: false` | 跳过探测：shell 家族未知、路径语法提示缺失，路径写错也不会被提前发现（见 4.3） |
 | `loginShell: true` 的副作用 | 会执行用户 profile 脚本，可能带来额外输出、环境变量变化或更慢的冷启动 |
-| preset 覆盖是快照 | 三个内置 preset 的插件列表整份复制自 `presets/` 里的 0.2.2-rc.3 安装原文（0.2.2 起形状变了，rc.2–rc.5 之间才是逐字节相同）；DSH 升级后不会自动合并新行，必须替换快照并重新生成（见 10.4） |
+| preset 覆盖是快照 | 三个内置 preset 的插件列表整份复制自 `presets/` 里的 0.2.2-rc.5 安装原文（0.2.2-rc.3 与 rc.5 逐字节相同；rc.1 改过形状）；DSH 升级后不会自动合并新行，必须替换快照并重新生成（见 10.4） |
 | 快照版本固定 | `presets/source.json` 的 `dshVersion` 必须等于 `@deepseek-ai/dsh-bash-local` 的 devDependency；`check:patch` 会在三者不一致时失败，防止用错版本的 preset 静默生成 |
 | prompt section 是 host 全局的 | 本插件的系统提示词 section 在 host 层注册，所以 `minimal` preset（persistent PTY shell）的会话也会看到这段「bash 工具每次全新 shell」的通用说明；在 minimal 下它不描述实际 shell 行为 |
 | `wslDistro` 不命中 | 配了 `wslDistro` 但最终解析到 native bash（如 Git Bash）时它不生效，也不会告警 |
@@ -510,7 +510,7 @@ Test-Path 'C:\Program Files\Git\bin\bash.exe'
 | 症状 | 最可能原因 | 排查/修法 |
 |---|---|---|
 | 仍是 `pwsh`、没有 `bash` | profile 用户层已有 `preset-*` 覆盖行（Web 编辑器保存过 preset），整份 `config.plugins` 盖掉本 bundle 的修正；或安装的是旧 `lib/` | 见下面的 A/B |
-| `list_agents` 工具消失、或 `ptc` preset 的 PTC 呈现异常 | 生成/安装的 preset 覆盖来自**旧版本快照或开发源码检出**（0.2.2-rc.3 的 delegation 是 `tool-subagent-control` + `modelSelection`/`modelDiscovery`，ptc 用 `tool-executor-ptc`；旧 rc.5 及以前的快照是 `tool-subagent-list-agents` + `modelSelectionSettings` + `tool-presentation`，混用会丢行） | 检查生成物头部的「目标 DSH 版本」与 `presets/source.json`；按 10.4 换成 0.2.2-rc.3 **安装自带**的快照并重新生成/安装 |
+| `list_agents` 工具消失、或 `ptc` preset 的 PTC 呈现异常 | 生成/安装的 preset 覆盖来自**旧版本快照或开发源码检出**（0.2.2-rc.5 的 delegation 是 `tool-subagent-control` + `modelSelection`/`modelDiscovery`，ptc 用 `tool-executor-ptc`；旧 rc.5 及以前的快照是 `tool-subagent-list-agents` + `modelSelectionSettings` + `tool-presentation`，混用会丢行） | 检查生成物头部的「目标 DSH 版本」与 `presets/source.json`；按 10.4 换成 0.2.2-rc.5 **安装自带**的快照并重新生成/安装 |
 | 设置里没有「Bash 执行器」页，或面板显示「读取配置失败」 | 安装/升级后未重启（host 行 `dsh-vsshell-panel` 与 `client.js` 都只在重启后加载）；或运行在非 Windows 平台（该页仅 win32 启用） | 重启 DSH；确认 `bundles` 里仍有 `@dsh-external/dsh-vsshell` 且 `cordis.patch.yml` 的 insert 含 `dsh-vsshell-panel` 行（见 7 节） |
 
 **A. profile 里有旧的 preset 覆盖**：打开 profile 的 `cordis.patch.yml`，搜索 `- id: preset-standard` / `preset-ptc` / `preset-cordis`。profile 用户层在 bundle 层之后叠加，preset 覆盖又是「整份 `config.plugins` 快照」，所以旧快照会整份替换掉本 bundle 的修正 → `tool-pwsh` 又出现。
@@ -518,7 +518,7 @@ Test-Path 'C:\Program Files\Git\bin\bash.exe'
 
 **B. 装的是旧 `lib/`**：改了 `src/` 但没 `pnpm run build`，或 build 失败后仍安装。修法：重新 build，`remove_bundle` 后重新 `install_bundle` 并重启。
 
-**复核办法**：看**合成后**的 preset 内容——`tool-pwsh` 应为 `disabled: true`、`tool-bash` 不应带 `disabled`；0.2.2-rc.3 的 delegation 里应有 `tool-subagent-control`，`tool-subagent` 带 `modelSelection: true`/`modelDiscovery: true`，ptc 应有 `tool-executor-ptc`；生成物头部版本行应为 `0.2.2-rc.3`。
+**复核办法**：看**合成后**的 preset 内容——`tool-pwsh` 应为 `disabled: true`、`tool-bash` 不应带 `disabled`；0.2.2-rc.5 的 delegation 里应有 `tool-subagent-control`，`tool-subagent` 带 `modelSelection: true`/`modelDiscovery: true`，ptc 应有 `tool-executor-ptc`；生成物头部版本行应为 `0.2.2-rc.5`。
 
 ### 9.10 从 GitHub 安装/热安装后的 shell 冲突与本地插件丢失
 
@@ -563,7 +563,7 @@ Test-Path 'C:\Program Files\Git\bin\bash.exe'
 | `client.js` | 配置面板 browser half（Module Loader 懒工厂）：注册 `settings.section` 页面、调用上面的 JSON 路由 |
 | `locale/en.json`、`locale/zh.json` | 插件在 Plugin Manager / 设置里的标题与描述（`meta.title` / `meta.description`） |
 | `icon.svg` | 插件图标（Plugin Manager / 设置列表） |
-| `presets/standard.patch.yml`、`presets/ptc.patch.yml`、`presets/cordis.patch.yml` | 目标 DSH 版本（0.2.2-rc.3）安装自带的 shipped preset **原文快照** |
+| `presets/standard.patch.yml`、`presets/ptc.patch.yml`、`presets/cordis.patch.yml` | 目标 DSH 版本（0.2.2-rc.5）安装自带的 shipped preset **原文快照** |
 | `presets/source.json` | 快照清单：`dshVersion`、提取来源、`files` 映射、三份文件的 `sha256`；版本与逐字节断言都以这里为准 |
 | `scripts/gen-preset-patch.mjs` | 从 `presets/` 快照（或 `--source` 指定的 DSH 检出）生成 `cordis.patch.yml`（`gen:patch`） |
 | `scripts/check.mjs` | `check` 的编排：typecheck → build → 产物语法 → 单测 → patch 校验 |
@@ -572,7 +572,7 @@ Test-Path 'C:\Program Files\Git\bin\bash.exe'
 | `scripts/smoke-executor.mjs` | 真机冒烟：唯一真正启动 bash 的脚本 |
 | `tests/detect.test.mjs` | `detect.ts` 纯函数单测（注入假 `exists` / `probe`） |
 | `tests/executor.test.mjs` | 执行器接线单测（假 `subprocess` / `systemPrompt`，`verify: false` 保证零 spawn；含 `execute()` 的 native / WSL 路径，以及热安装时等待旧 `ctx.shell` provider 卸载的 lifecycle 用例） |
-| `tests/patch.test.mjs` | patch 结构 / 目标版本 / 目标版本指纹（0.2.2-rc.3 安装形状；rc.2–rc.5 之间才逐字节相同）/ 生成物一致性断言（不写文件、不起 shell） |
+| `tests/patch.test.mjs` | patch 结构 / 目标版本 / 目标版本指纹（0.2.2-rc.5 安装形状；rc.3 与 rc.5 逐字节相同）/ 生成物一致性断言（不写文件、不起 shell） |
 | `tests/panel.test.mjs` | 配置面板单测：引号/裸值归一化、校验错误、同源路由的 GET/POST/token/跨站拒绝（假 `webServer` + 假 `configEditor`，零真实网络） |
 | `.gitattributes` | 固定 LF（`* text=auto eol=lf`），保证生成物逐字比较不被 CRLF 干扰 |
 | `docs/design.md` | 设计与实现约束（事实来源） |
@@ -603,7 +603,7 @@ $env:VSSHELL_SOURCE = 'custom'; $env:VSSHELL_BASH_PATH = 'D:\tools\git\bin\bash.
 
 ### 10.3 重新生成 `cordis.patch.yml`
 
-`cordis.patch.yml` 由 `scripts/gen-preset-patch.mjs` 生成，**默认输入是仓库内的 `presets/` 快照**（0.2.2-rc.3 安装自带的 preset 原文），因此日常重新生成不需要任何外部源码检出：
+`cordis.patch.yml` 由 `scripts/gen-preset-patch.mjs` 生成，**默认输入是仓库内的 `presets/` 快照**（0.2.2-rc.5 安装自带的 preset 原文），因此日常重新生成不需要任何外部源码检出：
 
 ```powershell
 pnpm run gen:patch            # 读 presets/，写 cordis.patch.yml
@@ -616,7 +616,7 @@ pnpm run check:patch          # 结构 + 目标版本 + 生成物一致性
 生成物头部有一行记录目标版本：
 
 ```
-# 目标 DSH 版本：0.2.2-rc.3；preset 快照来源：presets
+# 目标 DSH 版本：0.2.2-rc.5；preset 快照来源：presets
 ```
 
 `--source` 只在升级或临时比对时使用，可以指向另一个 preset 快照目录，或一份 DSH 源码检出（脚本会在其 `packages/bundle/web-app/presets/` 下找 `standard/ptc/cordis.patch.yml`，并用该检出 `package.json` 的 `version` 作为目标版本）：
@@ -633,9 +633,9 @@ pnpm run gen:patch --source <preset 快照目录或 DSH 源码检出>
 
 目标版本由 `presets/` 快照固定：升级 = **换快照 + 换依赖版本 + 重新生成**，三者必须同一版本。按顺序做：
 
-1. **换快照**：从新版本安装里取出 shipped preset 原文 —— `<安装目录>/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml`，逐字覆盖 `presets/` 下同名文件；更新 `presets/source.json` 的 `dshVersion`、`origin`、`extractedAt`，并用 `Get-FileHash -Algorithm SHA256`（或 `sha256sum`）重算三份文件填入 `sha256`。不要用别的版本的源码检出拼一份「差不多」的快照；sha256 不由你自己算的话，生成器会报「快照被改动」。**minor 升级（如 0.2.1→0.2.2）会改变 preset 形状**（本轮 rc.1：list-agents→tool-subagent-control、modelSelection/modelDiscovery、ptc 用 tool-executor-ptc、新增 plugin-market 等），必须整份替换快照 + 重算 sha256 + 更新测试指纹；只有 rc.2–rc.5 之间是字节相同的。
+1. **换快照**：从新版本安装里取出 shipped preset 原文 —— `<安装目录>/resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-web-app/presets/{standard,ptc,cordis}.patch.yml`，逐字覆盖 `presets/` 下同名文件；更新 `presets/source.json` 的 `dshVersion`、`origin`、`extractedAt`，并用 `Get-FileHash -Algorithm SHA256`（或 `sha256sum`）重算三份文件填入 `sha256`。不要用别的版本的源码检出拼一份「差不多」的快照；sha256 不由你自己算的话，生成器会报「快照被改动」。**minor 升级（如 0.2.1→0.2.2）会改变 preset 形状**（rc.1：list-agents→tool-subagent-control、modelSelection/modelDiscovery、ptc 用 tool-executor-ptc、新增 plugin-market 等），必须整份替换快照 + 重算 sha256 + 更新测试指纹；**patch 版本也可能改形状**（rc.3），同样要先提取安装快照比对——rc.3 与 rc.5 就是逐字节相同的。
 2. **换依赖版本**：`devDependencies` 里 `@deepseek-ai/dsh-*` 精确改成新版本；`peerDependencies` 也写**精确版本**（不是 `~`）；`@deepseek-ai/cordis` 同步到该 DSH 附带的版本。跑 `pnpm install`。
 3. **重新生成**：`pnpm run gen:patch`（默认读 `presets/`），生成物头部版本应自动变成新版本。
-4. **跑检查**：`pnpm run check`。`check:patch` 的三段断言会挡住「快照 / 依赖版本 / 生成物」不一致；`typecheck` 会第一个暴露 `LocalBashExecutor` internals 的变化（预算字段有变化按 AGENTS §4.3 同步）。**minor 升级还要核对面板的客户端契约**：本轮 0.2.2-rc.3 的 `settings.section` 只接受 `id`/`order`/`label`，`client.js` 已把原来的 `locale`/`inject` 注册选项改成闭包 + `ctx.locale.subscribe`。
-5. **diff 审阅**：`git diff presets/ cordis.patch.yml package.json`，逐项确认新增/删除的 preset 行、`tool-bash` 仍启用、`tool-pwsh` 仍 `disabled: true`、`!!js` 与多行块原样保留、insert 行仍 win32-only。重点核对**版本特征**：0.2.2-rc.3 的指纹是 delegation 里的 `tool-subagent-control` + `modelSelection`/`modelDiscovery`、ptc 的 `tool-executor-ptc`、standard 的 `tool-plugin-manager` 走 `!!js "!ctx.get('profileContext')"`、`tool-fs.applyPatch: false`、`tool-plugin-market`；`tests/patch.test.mjs` 必须按新版本**安装**的真实形状更新。若误用旧/开发源码快照，会出现缺失或旧字段（`tool-subagent-list-agents`、`modelSelectionSettings`、`tool-presentation`）。
+4. **跑检查**：`pnpm run check`。`check:patch` 的三段断言会挡住「快照 / 依赖版本 / 生成物」不一致；`typecheck` 会第一个暴露 `LocalBashExecutor` internals 的变化（预算字段有变化按 AGENTS §4.3 同步）。**minor 升级还要核对面板的客户端契约**：0.2.2 系列的 `settings.section` 只接受 `id`/`order`/`label`，`client.js` 已把原来的 `locale`/`inject` 注册选项改成闭包 + `ctx.locale.subscribe`。
+5. **diff 审阅**：`git diff presets/ cordis.patch.yml package.json`，逐项确认新增/删除的 preset 行、`tool-bash` 仍启用、`tool-pwsh` 仍 `disabled: true`、`!!js` 与多行块原样保留、insert 行仍 win32-only。重点核对**版本特征**：0.2.2-rc.5 的指纹是 delegation 里的 `tool-subagent-control` + `modelSelection`/`modelDiscovery`、ptc 的 `tool-executor-ptc`、standard 的 `tool-plugin-manager` 走 `!!js "!ctx.get('profileContext')"`、`tool-fs.applyPatch: false`、`tool-plugin-market`；`tests/patch.test.mjs` 必须按新版本**安装**的真实形状更新。若误用旧/开发源码快照，会出现缺失或旧字段（`tool-subagent-list-agents`、`modelSelectionSettings`、`tool-presentation`）。
 6. **重装并插入检查**：`pnpm run build` 后重新 `install_bundle`（或重装 bundle）并重启，按 3.3 的清单验证，重点看 `list_agents` 与 PTC 呈现是否随新 preset 保留。
